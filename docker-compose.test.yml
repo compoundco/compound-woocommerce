@@ -34,6 +34,8 @@ services:
       - wp:/var/www/html
       - ./:/var/www/html/wp-content/plugins/compound-woocommerce
       - ./woocommerce.zip:/tmp/woocommerce.zip
+      # Raise header limits: localhost cookies from other dev apps overflow Apache's default.
+      - ./test-site/apache-limits.conf:/etc/apache2/conf-enabled/z-compound-limits.conf
 
   cli:
     image: wordpress:cli-php8.2
