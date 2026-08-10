@@ -1,0 +1,58 @@
+# Plain-Docker WooCommerce test site using prebuilt images (no build step, so it
+# avoids the getcomposer.org fetch that blocks wp-env in restricted networks).
+# WooCommerce installs from the pre-fetched ./woocommerce.zip. The WP + CLI
+# containers reach the Compound services on the host via host.docker.internal.
+services:
+  db:
+    image: mariadb:lts
+    environment:
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: wordpress
+      MARIADB_ROOT_PASSWORD: root
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  wordpress:
+    image: wordpress:6.7-php8.2-apache
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8888:80"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - wp:/var/www/html
+      - ./:/var/www/html/wp-content/plugins/compound-woocommerce
+      - ./woocommerce.zip:/tmp/woocommerce.zip
+
+  cli:
+    image: wordpress:cli-php8.2
+    user: "33:33" # www-data, matches the wordpress image's file ownership
+    depends_on:
+      db:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - wp:/var/www/html
+      - ./:/var/www/html/wp-content/plugins/compound-woocommerce
+      - ./woocommerce.zip:/tmp/woocommerce.zip
+    entrypoint: ["tail", "-f", "/dev/null"]
+
+volumes:
+  wp:

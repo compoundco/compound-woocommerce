@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<ruleset name="Compound WooCommerce">
+  <description>WordPress + WooCommerce coding standards.</description>
+  <file>.</file>
+  <exclude-pattern>/vendor/*</exclude-pattern>
+  <exclude-pattern>/node_modules/*</exclude-pattern>
+  <rule ref="WordPress"/>
+  <config name="minimum_supported_wp_version" value="6.4"/>
+  <config name="testVersion" value="8.1-"/>
+</ruleset>

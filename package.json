@@ -1,0 +1,13 @@
+{
+  "name": "compound-woocommerce",
+  "private": true,
+  "description": "Dev tooling (wp-env) for the Compound WooCommerce plugin.",
+  "scripts": {
+    "env": "wp-env",
+    "start": "wp-env start",
+    "stop": "wp-env stop"
+  },
+  "devDependencies": {
+    "@wordpress/env": "^10.10.0"
+  }
+}

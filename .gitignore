@@ -1,0 +1,6 @@
+/vendor/
+/node_modules/
+.wp-env.override.json
+*.log
+.DS_Store
+/woocommerce.zip
