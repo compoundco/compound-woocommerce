@@ -21,6 +21,16 @@ Both calls are authenticated by the brand's **secret API key** (`sk_...`, server
 never reaches the browser). Inbound webhooks (`order.shipped` / `delivered` / `cancelled`) update the
 WooCommerce order at `POST /wp-json/compound/v1/webhook` (HMAC-verified).
 
+**Coupons.** Brands define coupons in the Compound admin portal (Discounts). Sync them into
+WooCommerce so they apply at checkout:
+
+```
+wp compound sync_coupons        # pulls active Compound coupons -> WooCommerce coupons
+```
+
+**Attribution.** Every order sends `channel: "woocommerce"`, WooCommerce Order Attribution
+(source/utm/referrer/device), and any applied coupon + discount, which Compound records on the order.
+
 > PCI note: the current Compound sandbox captures without a card token, so this MVP does not tokenize
 > card data in the browser. Client-side tokenization via `@compound/checkout-sdk` (so PAN never
 > touches WordPress) is the next increment, gated on the charge API accepting a token.

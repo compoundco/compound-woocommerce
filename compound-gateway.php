@@ -42,6 +42,11 @@ add_action(
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gateway-compound.php';
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-webhooks.php';
 
+		if ( defined( 'WP_CLI' ) && WP_CLI ) {
+			require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-cli.php';
+			WP_CLI::add_command( 'compound', 'WC_Compound_CLI' );
+		}
+
 		// Register the payment gateway.
 		add_filter(
 			'woocommerce_payment_gateways',

@@ -30,21 +30,48 @@ class WC_Compound_API {
 	 * @param array  $shipping_address Associative address array (PHI destination).
 	 * @param string $order_reference  The brand's own reference (WooCommerce order key).
 	 * @param string $idempotency_key  Stable key so retries don't duplicate the order.
+	 * @param array  $meta             Attribution + discount recorded on the order:
+	 *                                 channel, attribution (assoc), coupon_code, discount_cents.
 	 * @return array|WP_Error Decoded order on success.
 	 */
-	public function create_order( array $line_items, int $amount_cents, array $customer, array $shipping_address, string $order_reference, string $idempotency_key ) {
-		return $this->post(
-			$this->orders_url . '/v1/orders',
-			array(
-				'amount'           => $amount_cents,
-				'currency'         => 'usd',
-				'order_reference'  => $order_reference,
-				'customer'         => $customer,
-				'shipping_address' => $shipping_address,
-				'line_items'       => array_values( $line_items ),
-			),
-			$idempotency_key
+	public function create_order( array $line_items, int $amount_cents, array $customer, array $shipping_address, string $order_reference, string $idempotency_key, array $meta = array() ) {
+		$body = array(
+			'amount'           => $amount_cents,
+			'currency'         => 'usd',
+			'order_reference'  => $order_reference,
+			'customer'         => $customer,
+			'shipping_address' => $shipping_address,
+			'line_items'       => array_values( $line_items ),
+			'channel'          => $meta['channel'] ?? 'woocommerce',
+			'attribution'      => $meta['attribution'] ?? new stdClass(),
+			'coupon_code'      => $meta['coupon_code'] ?? '',
+			'discount_cents'   => $meta['discount_cents'] ?? 0,
 		);
+		return $this->post( $this->orders_url . '/v1/orders', $body, $idempotency_key );
+	}
+
+	/**
+	 * List the brand's active coupons (for syncing into WooCommerce).
+	 *
+	 * @return array|WP_Error
+	 */
+	public function get_coupons() {
+		$response = wp_remote_get(
+			$this->orders_url . '/v1/coupons',
+			array(
+				'timeout' => 15,
+				'headers' => array( 'Authorization' => 'Bearer ' . $this->api_key ),
+			)
+		);
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+		$code    = (int) wp_remote_retrieve_response_code( $response );
+		$decoded = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( $code < 200 || $code >= 300 ) {
+			return new WP_Error( 'compound_api_error', sprintf( 'List coupons returned %d.', $code ) );
+		}
+		return is_array( $decoded ) && isset( $decoded['coupons'] ) ? $decoded['coupons'] : array();
 	}
 
 	/**

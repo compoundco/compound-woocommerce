@@ -115,6 +115,15 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 		$amount_cents = (int) round( (float) $order->get_total() * 100 );
 		$reference    = $order->get_order_key();
 
+		// Attribution recorded on every order: channel + where it came from + any discount.
+		$coupons = $order->get_coupon_codes();
+		$meta    = array(
+			'channel'        => 'woocommerce',
+			'attribution'    => $this->attribution( $order ),
+			'coupon_code'    => ! empty( $coupons ) ? (string) $coupons[0] : '',
+			'discount_cents' => (int) round( (float) $order->get_total_discount() * 100 ),
+		);
+
 		// 1) Order-first intake (idempotent on the WC order key).
 		$created = $api->create_order(
 			$line_items,
@@ -122,7 +131,8 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 			array( 'email' => $order->get_billing_email() ),
 			$this->shipping_address( $order ),
 			$reference,
-			'wc-order-' . $reference
+			'wc-order-' . $reference,
+			$meta
 		);
 		if ( is_wp_error( $created ) ) {
 			wc_add_notice( $created->get_error_message(), 'error' );
@@ -163,6 +173,25 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 		$order->save();
 		wc_add_notice( __( 'Your payment could not be completed. Please try another method.', 'compound-woocommerce' ), 'error' );
 		return array( 'result' => 'failure' );
+	}
+
+	/**
+	 * Order attribution as WooCommerce records it (Order Attribution feature): where
+	 * the order came from. Only non-empty values are sent.
+	 */
+	private function attribution( WC_Order $order ): array {
+		$fields = array(
+			'source_type', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content',
+			'utm_term', 'referrer', 'device_type', 'session_entry',
+		);
+		$out = array();
+		foreach ( $fields as $f ) {
+			$v = $order->get_meta( '_wc_order_attribution_' . $f );
+			if ( '' !== $v && null !== $v ) {
+				$out[ $f ] = $v;
+			}
+		}
+		return $out;
 	}
 
 	/**
