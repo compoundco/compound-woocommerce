@@ -43,6 +43,7 @@ includes/class-wc-compound-api.php       HTTP client for the Compound external A
 includes/class-wc-gateway-compound.php   the WC_Payment_Gateway (settings + process_payment)
 includes/class-wc-compound-webhooks.php  inbound Compound webhooks -> WC order updates
 includes/class-wc-compound-cli.php       `wp compound sync_coupons` command
+Makefile                                 `make dev` (store up) / `make seed` (store data) / `make down`
 .wp-env.json / docker-compose.test.yml   Dockerized WordPress + WooCommerce test site (two ways)
 bin/setup-test-store.sh                  one command: key + matched products + theme + gateway
 bin/smoke-test.sh                        headless order -> process_payment against local Compound
@@ -50,31 +51,31 @@ bin/smoke-test.sh                        headless order -> process_payment again
 
 ## Run a test store
 
-Requires Docker. **Step 1 - Compound stack** (in the monorepo): `make dev`.
+Requires Docker. Each repo runs its own two commands; they stay independent.
 
-**Step 2 - a WordPress test site.** Either works; both leave a store at http://localhost:8888:
-
-```
-docker compose -f docker-compose.test.yml up -d    # prebuilt images (no build step)
-#   then, first time only:
-C="docker compose -f docker-compose.test.yml exec -T cli wp"
-$C core install --url=http://localhost:8888 --title="Store" --admin_user=admin --admin_password=password --admin_email=admin@example.com --skip-email
-$C core update && $C plugin install /tmp/woocommerce.zip --activate && $C plugin activate compound-woocommerce
-```
-
-or, if your network can reach getcomposer.org, the standard tool: `npm install && npx wp-env start`.
-(The compose file pre-fetches `woocommerce.zip`: `curl -sSL -o woocommerce.zip https://downloads.wordpress.org/plugin/woocommerce.zip`.)
-
-**Step 3 - one command wires everything up:**
+**Step 1 - Compound stack + demo data** (in the compound repo):
 
 ```
-bin/setup-test-store.sh
+make dev      # services + portals
+make seed     # the demo brand's payment lanes + canonical catalog SKUs
 ```
 
-It signs into the seeded demo brand, provisions payment lanes, **mints an API key**, seeds the
-**same SKUs** into the Compound catalog and WooCommerce, applies the Storefront theme + branding,
-and configures the gateway. (Pass your own key via `COMPOUND_API_KEY=sk_... bin/setup-test-store.sh`
-to skip minting.)
+**Step 2 - the store** (in this repo):
+
+```
+make dev      # brings up + provisions WordPress + WooCommerce at http://localhost:8888
+make seed     # storefront products (SKUs matched to the Compound catalog) + theme + gateway
+```
+
+`make dev` here uses prebuilt images (no build step, so it avoids the getcomposer.org fetch that
+blocks wp-env in restricted networks); it installs WordPress + WooCommerce + this plugin and is
+idempotent. `make seed` runs `bin/setup-test-store.sh`, which signs into the seeded demo brand,
+**mints an API key**, seeds the storefront products, applies the Storefront theme + branding, and
+configures the gateway. (Pass your own key via `COMPOUND_API_KEY=sk_... make seed` to skip minting.)
+Checkout resolves against the Compound catalog seeded in step 1, so run that first.
+
+Prefer the standard tool and your network can reach getcomposer.org? `npm install && npx wp-env
+start` also leaves a store at http://localhost:8888, then run `make seed`.
 
 Now shop at http://localhost:8888 and check out with "Card (Compound)", or run the headless check:
 
