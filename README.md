@@ -42,55 +42,57 @@ compound-gateway.php                     plugin bootstrap (guards WooCommerce, r
 includes/class-wc-compound-api.php       HTTP client for the Compound external API
 includes/class-wc-gateway-compound.php   the WC_Payment_Gateway (settings + process_payment)
 includes/class-wc-compound-webhooks.php  inbound Compound webhooks -> WC order updates
-.wp-env.json                             Dockerized WordPress + WooCommerce test site
-bin/setup-test-store.sh                  seed dummy products + configure the gateway
+includes/class-wc-compound-cli.php       `wp compound sync_coupons` command
+.wp-env.json / docker-compose.test.yml   Dockerized WordPress + WooCommerce test site (two ways)
+bin/setup-test-store.sh                  one command: key + matched products + theme + gateway
 bin/smoke-test.sh                        headless order -> process_payment against local Compound
 ```
 
 ## Run a test store
 
-Requires Docker and Node (for `wp-env`). First bring up the Compound stack in the monorepo
-(`make dev`), then here:
+Requires Docker. **Step 1 - Compound stack** (in the monorepo): `make dev`.
+
+**Step 2 - a WordPress test site.** Either works; both leave a store at http://localhost:8888:
 
 ```
-npm install                 # installs @wordpress/env (dev tooling)
-npx wp-env start            # boots WordPress + WooCommerce at http://localhost:8888
+docker compose -f docker-compose.test.yml up -d    # prebuilt images (no build step)
+#   then, first time only:
+C="docker compose -f docker-compose.test.yml exec -T cli wp"
+$C core install --url=http://localhost:8888 --title="Store" --admin_user=admin --admin_password=password --admin_email=admin@example.com --skip-email
+$C core update && $C plugin install /tmp/woocommerce.zip --activate && $C plugin activate compound-woocommerce
 ```
 
-> Alternative (no build step): if `wp-env` can't build its images (e.g. a restricted network that
-> can't reach getcomposer.org), use the plain compose file with prebuilt images instead. This is the
-> path the plugin was verified on:
->
-> ```
-> curl -sSL -o woocommerce.zip https://downloads.wordpress.org/plugin/woocommerce.zip
-> docker compose -f docker-compose.test.yml up -d
-> C="docker compose -f docker-compose.test.yml exec -T cli wp"
-> $C core install --url=http://localhost:8888 --title="Woo Test" --admin_user=admin --admin_password=password --admin_email=admin@example.com --skip-email
-> $C core update && $C plugin install /tmp/woocommerce.zip --activate
-> $C plugin activate compound-woocommerce
-> ```
+or, if your network can reach getcomposer.org, the standard tool: `npm install && npx wp-env start`.
+(The compose file pre-fetches `woocommerce.zip`: `curl -sSL -o woocommerce.zip https://downloads.wordpress.org/plugin/woocommerce.zip`.)
 
-On the Compound side (admin portal, http://localhost:3000, demo brand):
-- seed the catalog (Catalog page dev box) so the brand has SKUs `glp1-starter`, `tirz-pro`,
-  `recovery-bpc`;
-- provision payments lanes for the brand (`POST /v1/brands/{id}/processor_configs`);
-- create a **secret API key** with `orders:write` + `charges:write` (Developers page).
-
-Then configure the store with that key:
+**Step 3 - one command wires everything up:**
 
 ```
-COMPOUND_API_KEY=sk_sandbox_... bin/setup-test-store.sh
+bin/setup-test-store.sh
 ```
 
-This creates the dummy products (SKUs matching the Compound catalog) and points the gateway at
-`host.docker.internal:4003` (orders) and `:4005` (payments).
+It signs into the seeded demo brand, provisions payment lanes, **mints an API key**, seeds the
+**same SKUs** into the Compound catalog and WooCommerce, applies the Storefront theme + branding,
+and configures the gateway. (Pass your own key via `COMPOUND_API_KEY=sk_... bin/setup-test-store.sh`
+to skip minting.)
 
-Now place an order at http://localhost:8888, or run the headless check:
+Now shop at http://localhost:8888 and check out with "Card (Compound)", or run the headless check:
 
 ```
 bin/smoke-test.sh
 # -> {"result":"success","wc_status":"processing","compound_order":"order_...","compound_charge":"chg_..."}
 ```
+
+### Demo products (SKUs shared with the Compound catalog seed)
+
+| SKU | Product | Price |
+|---|---|---|
+| `glp1-starter` | GLP-1 Starter | $199 |
+| `glp1-plus` | GLP-1 Plus | $299 |
+| `tirz-pro` | Tirzepatide Pro | $399 |
+| `recovery-bpc` | Recovery BPC-157 | $149 |
+
+These match `apps/admin-portal/.../api/dev/seed/catalog` so a storefront checkout works out of the box.
 
 The order should appear in Compound (orders service) as captured/pending_routing, and its charge in
 payments.
