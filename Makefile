@@ -31,3 +31,12 @@ seed: ## Seed the store: products + theme + gateway (needs the compound repo see
 .PHONY: down
 down: ## Stop the test store
 	$(COMPOSE) down
+
+.PHONY: reset
+reset: ## Wipe the test store (WordPress + db volumes); destructive, local only
+	@if [ "$(CONFIRM)" != "yes" ]; then \
+	  printf "Type 'yes' to wipe the WooCommerce store data: "; read ans; \
+	  [ "$$ans" = "yes" ] || { echo "Aborted - nothing was deleted."; exit 1; }; \
+	fi
+	$(COMPOSE) down -v
+	@echo "Store wiped. Run 'make dev' to reprovision, then 'make seed'."
