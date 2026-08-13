@@ -1,0 +1,70 @@
+#!/bin/bash
+# First-boot bootstrap for the Compound WooCommerce test store.
+# Log: /var/log/compound-store-bootstrap.log
+set -euxo pipefail
+exec > >(tee -a /var/log/compound-store-bootstrap.log) 2>&1
+
+APP_DIR=/opt/compound-store
+BUCKET=${bucket}
+SSM_PREFIX=${ssm_prefix}
+REGION=${region}
+EXPECTED_IP=${expected_ip}
+
+# --- host packages ------------------------------------------------------------
+
+dnf update -y
+dnf install -y docker unzip
+
+# A 2 GB swapfile: MariaDB + PHP-FPM + Caddy fit in a t3.small's 2 GB of RAM, but a
+# WooCommerce plugin install or a burst of checkout traffic can spike past it, and
+# the OOM killer takes the database down first.
+if [ ! -f /swapfile ]; then
+  dd if=/dev/zero of=/swapfile bs=1M count=2048
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
+# Amazon Linux 2023 ships docker but not the compose v2 CLI plugin.
+COMPOSE_VERSION=v2.29.7
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -fsSL "https://github.com/docker/compose/releases/download/$COMPOSE_VERSION/docker-compose-linux-$(uname -m)" \
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+systemctl enable --now docker
+
+# --- the deploy script (also used by `make aws-deploy`) -----------------------
+
+mkdir -p "$APP_DIR"
+
+# Deliberately a thin wrapper: the real deploy logic is an S3 object, so it can be
+# fixed on a running store. Anything baked in here is frozen until the instance is
+# replaced, because user-data runs on first boot only.
+cat > /usr/local/bin/compound-store-deploy <<WRAPPER
+#!/bin/bash
+set -euo pipefail
+aws s3 cp --only-show-errors "s3://$BUCKET/deploy.sh" "$APP_DIR/deploy.sh"
+chmod +x "$APP_DIR/deploy.sh"
+exec "$APP_DIR/deploy.sh"
+WRAPPER
+chmod +x /usr/local/bin/compound-store-deploy
+
+# --- wait for the Elastic IP --------------------------------------------------
+
+# The instance boots with an ephemeral public IP; Terraform attaches the Elastic IP
+# a moment later. Caddy's HTTP-01 challenge resolves <dashed-eip>.sslip.io, so
+# starting before the association lands means a failed issuance and a backoff wait.
+TOKEN="$(curl -sX PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 600')"
+for _ in $(seq 1 60); do
+  CURRENT="$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4 || true)"
+  [ "$CURRENT" = "$EXPECTED_IP" ] && break
+  sleep 5
+done
+
+# --- bring the store up -------------------------------------------------------
+
+/usr/local/bin/compound-store-deploy
+
+echo "Bootstrap complete: https://$(echo "$EXPECTED_IP" | tr '.' '-').sslip.io"

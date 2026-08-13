@@ -4,3 +4,12 @@
 *.log
 .DS_Store
 /woocommerce.zip
+
+# Terraform: state holds the generated admin password + the Compound API key.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+/terraform/.build/
+crash.log

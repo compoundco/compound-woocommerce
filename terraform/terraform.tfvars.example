@@ -1,0 +1,57 @@
+# Copy to terraform.tfvars and fill in. Everything here has a working default
+# except the Compound API key - without it the store still comes up, with the
+# gateway installed but disabled.
+
+region = "us-east-1"
+name   = "compound-store"
+
+# Terraform aborts before creating anything if the resolved credentials are not
+# this account - a stale AWS_PROFILE can't quietly stand the store up elsewhere.
+aws_account_id = "416339521945"
+aws_profile    = "compound"
+
+# --- Compound gateway ---------------------------------------------------------
+
+# Secret key (sk_...) with orders:write + charges:write. Locally `make seed` mints
+# one from the identity service; from AWS you paste an existing key. Mint one with:
+#   curl -s -X POST "$IDENTITY_URL/v1/brands/$BRAND/apikeys" \
+#     -H 'Content-Type: application/json' \
+#     -d '{"name":"woo-aws-store","environment":"sandbox","scopes":["orders:write","charges:write","orders:read"]}'
+compound_api_key = "sk_..."
+
+# Where the store reaches Compound. These must be resolvable from AWS - the local
+# host.docker.internal:4003 / :4005 are not. Options, in order of preference:
+#   1. a deployed Compound stack:  https://orders.your-compound-host.dev
+#   2. the hosted API:             https://api.compound.dev  (the default)
+#   3. a tunnel to your laptop:    https://<name>.ngrok.app / a Tailscale Funnel URL
+compound_orders_url   = "https://api.compound.dev"
+compound_payments_url = "https://api.compound.dev"
+
+compound_environment = "sandbox"
+
+# Leave unset to have Terraform generate one, then read it back with
+#   terraform output -raw compound_webhook_secret
+# and configure the same value on the Compound side.
+# compound_webhook_secret = ""
+
+# --- Store --------------------------------------------------------------------
+
+site_title     = "Acme Peptides"
+wp_admin_user  = "admin"
+wp_admin_email = "admin@example.com"
+# Generated if left unset: terraform output -raw wp_admin_password
+# wp_admin_password = ""
+
+seed_products = true
+
+# --- Infrastructure -----------------------------------------------------------
+
+instance_type    = "t3.small"
+root_volume_size = 30
+
+# Let's Encrypt expiry notices. Optional.
+# acme_email = "you@example.com"
+
+# Lock the storefront down to your own IP while testing. Port 80 stays open
+# regardless - Let's Encrypt needs it to validate and renew.
+# allowed_https_cidrs = ["203.0.113.7/32"]

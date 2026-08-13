@@ -47,6 +47,8 @@ Makefile                                 `make dev` (store up) / `make seed` (st
 .wp-env.json / docker-compose.test.yml   Dockerized WordPress + WooCommerce test site (two ways)
 bin/setup-test-store.sh                  one command: key + matched products + theme + gateway
 bin/smoke-test.sh                        headless order -> process_payment against local Compound
+bin/aws-deploy.sh                        push plugin + config changes to the live AWS store
+terraform/                               the same store on AWS as a live HTTPS site
 ```
 
 ## Run a test store
@@ -106,6 +108,26 @@ event bus - the order advanced to `captured / pending_routing`; the WooCommerce 
 `processing`. A product whose SKU is not in the brand's Compound catalog is rejected (gateway
 failure, WooCommerce order stays unpaid) - order-first + data-minimization holding at the plugin
 boundary.
+
+## Run a live store on AWS
+
+`localhost` can't receive Compound's webhooks and can't be opened from a phone or
+shared with anyone. `terraform/` stands the same stack up on one EC2 instance with a real
+Let's Encrypt certificate, at `https://<elastic-ip>.sslip.io` - no domain purchase, no
+Route 53 zone. About $15-20/month; `make aws-down` takes it to zero.
+
+```
+cp terraform/terraform.tfvars.example terraform/terraform.tfvars
+$EDITOR terraform/terraform.tfvars   # Compound API key + the API base URLs
+make aws-up                          # ~4 min, prints the store URL
+make aws-creds                       # admin password + webhook signing secret
+make aws-deploy                      # push a plugin change to the running store
+```
+
+The one thing that does not carry over from local: the gateway's Orders/Payments URLs.
+`host.docker.internal:4003` doesn't resolve from AWS, so point `compound_orders_url` /
+`compound_payments_url` at a deployed Compound stack or a tunnel to your machine. Details
+and the full resource list are in [terraform/README.md](terraform/README.md).
 
 ## Settings (WooCommerce -> Settings -> Payments -> Compound)
 
