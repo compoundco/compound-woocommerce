@@ -157,7 +157,7 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 
 		if ( 'captured' === $status ) {
 			$order->payment_complete( $charge_id );
-			$order->add_order_note( sprintf( 'Compound charge %s captured via %s.', $charge_id, (string) ( $charge['processor_used'] ?? 'processor' ) ) );
+			$order->add_order_note( sprintf( 'Compound order %s - charge %s captured via %s.', $compound_order_id, $charge_id, (string) ( $charge['processor_used'] ?? 'processor' ) ) );
 			$order->save();
 			if ( WC()->cart ) {
 				WC()->cart->empty_cart();

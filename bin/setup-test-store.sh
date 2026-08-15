@@ -19,11 +19,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 IDENTITY_URL="${COMPOUND_IDENTITY_URL:-http://localhost:4001}"
+# Host-side orders URL (this script runs on the host; registers the outbound webhook endpoint).
+ORDERS_URL="${COMPOUND_ORDERS_URL:-http://localhost:4003}"
 DEMO_EMAIL="${COMPOUND_DEMO_EMAIL:-demo@acmepeptides.com}"
 DEMO_PASS="${COMPOUND_DEMO_PASS:-compound-demo-2026}"
 # URLs the WordPress container uses to reach the host services:
 GW_ORDERS_URL="${GW_ORDERS_URL:-http://host.docker.internal:4003}"
 GW_PAYMENTS_URL="${GW_PAYMENTS_URL:-http://host.docker.internal:4005}"
+# The store's webhook URL as Compound's outbound worker (on the host) reaches it:
+STORE_WEBHOOK_URL="${COMPOUND_STORE_WEBHOOK_URL:-http://localhost:8888/wp-json/compound/v1/webhook}"
 WEBHOOK_SECRET="${COMPOUND_WEBHOOK_SECRET:-dev-webhook-secret}"
 
 # Storefront products. Each entry: sku|name|price|blurb. The SKUs match the Compound
@@ -75,6 +79,26 @@ KEY="${COMPOUND_API_KEY:-$(curl -s -X POST "$IDENTITY_URL/v1/brands/$BRAND/apike
   -d '{"name":"woo-test-store","environment":"sandbox","scopes":["orders:write","charges:write","orders:read"]}' \
   | python3 -c 'import sys,json;print(json.load(sys.stdin)["key"])')}"
 echo "    brand=$BRAND  key=${KEY:0:16}..."
+
+echo "==> Compound: register the outbound webhook endpoint -> this store"
+# Compound's outbound worker (on the host) delivers order.* here as fulfillment progresses.
+# Deactivate any prior endpoints (re-runs) so exactly one is active, then register a fresh one
+# and use its signing secret for the gateway - so signatures match.
+for id in $(curl -s "$ORDERS_URL/v1/brands/$BRAND/webhook_endpoints" \
+  | python3 -c 'import sys,json;[print(e["id"]) for e in json.load(sys.stdin).get("endpoints",[])]' 2>/dev/null); do
+  curl -s -X PATCH "$ORDERS_URL/v1/brands/$BRAND/webhook_endpoints/$id" \
+    -H 'Content-Type: application/json' -d '{"active":false}' >/dev/null 2>&1 || true
+done
+EP="$(curl -s -X POST "$ORDERS_URL/v1/brands/$BRAND/webhook_endpoints" \
+  -H 'Content-Type: application/json' -d "{\"url\":\"$STORE_WEBHOOK_URL\"}")"
+EP_SECRET="$(printf '%s' "$EP" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("endpoint",{}).get("secret",""))' 2>/dev/null || true)"
+if [ -n "$EP_SECRET" ]; then
+  WEBHOOK_SECRET="$EP_SECRET"
+  echo "    endpoint -> $STORE_WEBHOOK_URL  secret=${WEBHOOK_SECRET:0:14}..."
+else
+  echo "    WARN: could not register a webhook endpoint (is the orders service up at $ORDERS_URL?)."
+  echo "          Outbound status updates to WooCommerce won't verify until this is set."
+fi
 
 echo "==> WooCommerce: seed the storefront products (SKUs matched to the Compound catalog)"
 # wipe existing Woo products so re-runs stay clean

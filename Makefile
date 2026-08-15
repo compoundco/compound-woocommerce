@@ -27,8 +27,20 @@ dev: ## Bring up + provision the WordPress + WooCommerce demo store (:8888)
 	@echo "  Store: http://localhost:8888   (run 'make seed' to populate it)"
 
 .PHONY: seed
-seed: ## Seed the store: products + theme + gateway (needs the compound repo seeded too)
+seed: ## Seed the store: products + theme + gateway + webhook endpoint (needs the compound repo seeded)
 	bash bin/setup-test-store.sh
+
+.PHONY: sim-shipped sim-delivered sim-exception
+sim-shipped: ## Simulate the pharmacy shipping an order (ORDER=<compound_order_id>)
+	bash bin/sim-fulfillment.sh shipped $(ORDER)
+sim-delivered: ## Simulate delivery (ORDER=<compound_order_id>)
+	bash bin/sim-fulfillment.sh delivered $(ORDER)
+sim-exception: ## Simulate a cold-chain excursion (ORDER=<compound_order_id>)
+	bash bin/sim-fulfillment.sh exception $(ORDER)
+
+.PHONY: smoke
+smoke: ## Headless checkout against the Compound stack; prints WC status + Compound order id
+	bash bin/smoke-test.sh
 
 .PHONY: down
 down: ## Stop the test store
