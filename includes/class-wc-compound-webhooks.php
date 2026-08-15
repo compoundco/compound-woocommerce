@@ -1,10 +1,10 @@
 <?php
 /**
- * Receives inbound webhooks from Compound (order.shipped / delivered / cancelled)
- * and reflects them on the WooCommerce order. Signature-verified before processing.
- *
- * NOTE: Compound outbound webhooks to brands are on the roadmap; this endpoint is
- * ready for them and can also be driven manually in testing.
+ * Receives outbound webhooks from Compound and mirrors fulfillment status onto the
+ * WooCommerce order. Compound owns the canonical order state and delivers order.*
+ * events (routed / shipped / delivered / exception / cancelled), signed HMAC-SHA256
+ * over the raw body (Compound-Signature). Signature-verified before processing;
+ * idempotent per event on Compound's side (safe to retry).
  *
  * @package Compound\WooCommerce
  */
@@ -52,23 +52,45 @@ class WC_Compound_Webhooks {
 			return new WP_REST_Response( array( 'applied' => false, 'reason' => 'order not found' ), 200 );
 		}
 
+		// Map Compound fulfillment events onto native WooCommerce statuses + notes. Compound
+		// owns the canonical fulfillment state (routed -> compounding -> shipped -> delivered,
+		// or exception); WooCommerce mirrors it for the merchant.
 		switch ( $event['type'] ) {
+			case 'order.routed':
+				$pharmacy = (string) ( $data['pharmacy_id'] ?? '' );
+				$order->update_meta_data( '_compound_pharmacy_id', $pharmacy );
+				$order->add_order_note( sprintf( 'Routed to pharmacy %s (Compound).', $pharmacy ) );
+				// Move a still-pending order into fulfillment.
+				if ( in_array( $order->get_status(), array( 'pending', 'on-hold' ), true ) ) {
+					$order->update_status( 'processing', 'Routed to pharmacy (Compound).' );
+				} else {
+					$order->save();
+				}
+				break;
 			case 'order.shipped':
 				$carrier  = (string) ( $data['carrier'] ?? '' );
 				$tracking = (string) ( $data['tracking_number'] ?? '' );
 				$order->update_meta_data( '_compound_carrier', $carrier );
 				$order->update_meta_data( '_compound_tracking', $tracking );
 				$order->add_order_note( sprintf( 'Shipped via %s (tracking %s).', $carrier, $tracking ) );
-				$order->save();
+				if ( 'completed' !== $order->get_status() ) {
+					$order->update_status( 'processing', 'Shipped (reported by Compound).' );
+				} else {
+					$order->save();
+				}
 				break;
 			case 'order.delivered':
 				$order->update_status( 'completed', 'Delivered (reported by Compound).' );
+				break;
+			case 'order.exception':
+				// Fail-safe: a fulfillment problem holds the order for a human.
+				$order->update_status( 'on-hold', 'Fulfillment exception (reported by Compound). Needs review.' );
 				break;
 			case 'order.cancelled':
 				$order->update_status( 'cancelled', 'Cancelled (reported by Compound).' );
 				break;
 			default:
-				// Tolerate unknown event types (additive-only evolution).
+				// Tolerate unknown / non-fulfillment event types (additive-only evolution).
 				return new WP_REST_Response( array( 'applied' => false, 'reason' => 'ignored' ), 200 );
 		}
 

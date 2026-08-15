@@ -18,8 +18,16 @@ At checkout, on Place Order, the gateway:
    cleanly with the real reason.
 
 Both calls are authenticated by the brand's **secret API key** (`sk_...`, server-side only; the key
-never reaches the browser). Inbound webhooks (`order.shipped` / `delivered` / `cancelled`) update the
-WooCommerce order at `POST /wp-json/compound/v1/webhook` (HMAC-verified).
+never reaches the browser). Compound then delivers **outbound webhooks** as the order progresses -
+`order.routed` / `order.shipped` / `order.delivered` / `order.exception` / `order.cancelled` - to
+`POST /wp-json/compound/v1/webhook` (HMAC-verified). They map onto native WooCommerce statuses +
+notes: routed/shipped -> **processing** (+ pharmacy + carrier/tracking notes), delivered ->
+**completed**, exception -> **on-hold** (needs review), cancelled -> **cancelled**. Configure the
+endpoint URL + signing secret in Compound (admin portal -> Developers) and paste the secret into the
+gateway settings.
+
+> Refunds: the gateway advertises refund support, but routing a refund through Compound needs the
+> Compound refund API (`/v1/refunds`), which is not built yet - refund in Compound directly for now.
 
 **Coupons.** Brands define coupons in the Compound admin portal (Discounts). Sync them into
 WooCommerce so they apply at checkout:
