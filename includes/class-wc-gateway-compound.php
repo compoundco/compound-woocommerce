@@ -14,7 +14,9 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 		$this->id                 = 'compound';
 		$this->method_title       = __( 'Compound', 'compound-woocommerce' );
 		$this->method_description = __( 'Route checkout and orders through Compound (payments orchestration + pharmacy fulfillment).', 'compound-woocommerce' );
-		$this->has_fields         = false;
+		// has_fields = true so the shopper picks a payment method (card / crypto) at checkout;
+		// that choice drives which processors Compound routes across.
+		$this->has_fields         = true;
 		$this->supports           = array( 'products', 'refunds' );
 
 		$this->init_form_fields();
@@ -24,6 +26,39 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 		$this->description = $this->get_option( 'description' );
 
 		add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
+	}
+
+	/**
+	 * The payment methods (rails) the shopper can choose. What they pick is sent to Compound as
+	 * method_type, which selects the eligible processors the routing engine chooses among.
+	 */
+	private function methods(): array {
+		return array(
+			'card'   => __( 'Card', 'compound-woocommerce' ),
+			'crypto' => __( 'Cryptocurrency', 'compound-woocommerce' ),
+		);
+	}
+
+	/**
+	 * Checkout UI: a short description + a rail chooser. The selection posts as `compound_method`.
+	 */
+	public function payment_fields() {
+		if ( $this->description ) {
+			echo wpautop( wp_kses_post( $this->description ) );
+		}
+		$methods = $this->methods();
+		echo '<fieldset id="compound-method" style="border:0;padding:0;margin:0;">';
+		$first = true;
+		foreach ( $methods as $value => $label ) {
+			printf(
+				'<label style="display:block;margin:4px 0;"><input type="radio" name="compound_method" value="%s" %s /> %s</label>',
+				esc_attr( $value ),
+				checked( $first, true, false ),
+				esc_html( $label )
+			);
+			$first = false;
+		}
+		echo '</fieldset>';
 	}
 
 	public function init_form_fields() {
@@ -97,6 +132,14 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 		$order = wc_get_order( $order_id );
 		$api   = $this->api();
 
+		// The rail the shopper chose (WooCommerce has already verified the checkout nonce).
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$method = isset( $_POST['compound_method'] ) ? sanitize_text_field( wp_unslash( $_POST['compound_method'] ) ) : 'card';
+		if ( ! array_key_exists( $method, $this->methods() ) ) {
+			$method = 'card';
+		}
+		$order->update_meta_data( '_compound_method', $method );
+
 		// Build line items as {sku, quantity} ONLY. A missing SKU can't be fulfilled.
 		$line_items = array();
 		foreach ( $order->get_items() as $item ) {
@@ -142,8 +185,9 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 		$compound_order_id = (string) ( $created['id'] ?? '' );
 		$order->update_meta_data( '_compound_order_id', $compound_order_id );
 
-		// 2) Charge against that order.
-		$charge = $api->create_charge( $compound_order_id, $amount_cents, 'wc-charge-' . $reference );
+		// 2) Charge against that order, on the chosen rail. Compound routes across the processors
+		//    that support this method (card -> card processors; crypto -> the crypto gateway).
+		$charge = $api->create_charge( $compound_order_id, $amount_cents, 'wc-charge-' . $reference, $method );
 		if ( is_wp_error( $charge ) ) {
 			wc_add_notice( $charge->get_error_message(), 'error' );
 			$order->add_order_note( 'Compound charge failed: ' . $charge->get_error_message() );

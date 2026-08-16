@@ -83,13 +83,13 @@ class WC_Compound_API {
 	 * @param string $idempotency_key Stable per-charge key.
 	 * @return array|WP_Error Decoded charge on success.
 	 */
-	public function create_charge( string $order_id, int $amount_cents, string $idempotency_key ) {
+	public function create_charge( string $order_id, int $amount_cents, string $idempotency_key, string $method_type = 'card' ) {
 		return $this->post(
 			$this->payments_url . '/v1/charges',
 			array(
 				'order_id'    => $order_id,
 				'amount'      => $amount_cents,
-				'method_type' => 'card',
+				'method_type' => $method_type,
 			),
 			$idempotency_key
 		);
