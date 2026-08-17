@@ -29,14 +29,23 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 	}
 
 	/**
-	 * The payment methods (rails) the shopper can choose. What they pick is sent to Compound as
-	 * method_type, which selects the eligible processors the routing engine chooses among.
+	 * The payment methods (rails) the shopper can choose, keyed by the method_type sent to
+	 * Compound. Single source of truth so the classic checkout (payment_fields) and the block
+	 * checkout (WC_Compound_Blocks) offer exactly the same rails - they must never drift.
 	 */
-	private function methods(): array {
+	public static function method_labels(): array {
 		return array(
 			'card'   => __( 'Card', 'compound-woocommerce' ),
 			'crypto' => __( 'Cryptocurrency', 'compound-woocommerce' ),
 		);
+	}
+
+	/**
+	 * The payment methods (rails) the shopper can choose. What they pick is sent to Compound as
+	 * method_type, which selects the eligible processors the routing engine chooses among.
+	 */
+	private function methods(): array {
+		return self::method_labels();
 	}
 
 	/**

@@ -58,6 +58,16 @@ add_action(
 
 		// Inbound webhooks from Compound (order status updates).
 		( new WC_Compound_Webhooks() )->register();
+
+		// Register the gateway with the Cart/Checkout blocks (classic gateways are otherwise
+		// invisible there - the checkout shows "no payment methods available").
+		add_action(
+			'woocommerce_blocks_payment_method_type_registration',
+			function ( $registry ) {
+				require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-blocks.php';
+				$registry->register( new WC_Compound_Blocks() );
+			}
+		);
 	}
 );
 
@@ -67,6 +77,7 @@ add_action(
 	function () {
 		if ( class_exists( \Automattic\WooCommerce\Utilities\FeaturesUtil::class ) ) {
 			\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', COMPOUND_WC_FILE, true );
+			\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'cart_checkout_blocks', COMPOUND_WC_FILE, true );
 		}
 	}
 );
