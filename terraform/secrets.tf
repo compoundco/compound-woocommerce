@@ -7,9 +7,11 @@ locals {
 
   # The sslip.io wildcard resolver maps <dashed-ip>.sslip.io -> that IP, so the
   # store gets a real hostname (and therefore a real Let's Encrypt cert) with no
-  # domain purchase and no Route 53 zone.
-  hostname = "${replace(aws_eip.this.public_ip, ".", "-")}.sslip.io"
-  site_url = "https://${local.hostname}"
+  # domain purchase and no Route 53 zone. A custom site_domain (e.g. chefspeps.com)
+  # overrides it once its DNS A record points at this Elastic IP.
+  sslip_hostname = "${replace(aws_eip.this.public_ip, ".", "-")}.sslip.io"
+  hostname       = var.site_domain != "" ? var.site_domain : local.sslip_hostname
+  site_url       = "https://${local.hostname}"
 
   wp_admin_password       = var.wp_admin_password != "" ? var.wp_admin_password : random_password.wp_admin.result
   compound_webhook_secret = var.compound_webhook_secret != "" ? var.compound_webhook_secret : random_password.webhook.result

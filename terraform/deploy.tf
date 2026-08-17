@@ -35,9 +35,12 @@ locals {
 
   # Only the plugin's own files - never node_modules, .git, or the 20 MB
   # woocommerce.zip (WooCommerce is fetched from wordpress.org on the instance).
+  # assets/** carries the block-checkout script (assets/js/blocks.js); without it
+  # the block checkout shows "no payment methods available".
   plugin_files = concat(
     ["compound-gateway.php"],
     sort(tolist(fileset(abspath("${path.module}/.."), "includes/**/*.php"))),
+    sort(tolist(fileset(abspath("${path.module}/.."), "assets/**/*"))),
   )
 }
 
@@ -77,8 +80,10 @@ resource "aws_s3_object" "caddyfile" {
   key    = "Caddyfile"
 
   content = templatefile("${path.module}/templates/Caddyfile.tftpl", {
-    hostname   = local.hostname
-    acme_email = var.acme_email
+    hostname        = local.hostname
+    acme_email      = var.acme_email
+    basic_auth_user = var.basic_auth_user
+    basic_auth_hash = var.basic_auth_hash
   })
 }
 

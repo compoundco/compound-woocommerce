@@ -13,6 +13,17 @@ ${hostname} {
 	request_body {
 		max_size 64MB
 	}
+%{~ if basic_auth_user != "" }
+
+	# Staging gate: password-protect the whole store EXCEPT the Compound webhook
+	# endpoint - Compound's outbound worker posts fulfillment status there and cannot
+	# send basic-auth credentials, so that one path must stay open (it verifies its
+	# own HMAC signature).
+	@gated not path /wp-json/compound/v1/webhook*
+	basic_auth @gated {
+		${basic_auth_user} ${basic_auth_hash}
+	}
+%{~ endif }
 
 	reverse_proxy wordpress:80 {
 		header_up X-Forwarded-Proto https

@@ -53,6 +53,24 @@ variable "acme_email" {
   default     = ""
 }
 
+variable "site_domain" {
+  description = "Custom domain for the store (e.g. chefspeps.com). When set, the store is served at https://<site_domain> with its own Let's Encrypt cert instead of the <dashed-ip>.sslip.io fallback. DNS for this domain MUST point an A record at the instance's Elastic IP before apply, so Caddy can complete the ACME (HTTP-01) challenge."
+  type        = string
+  default     = ""
+}
+
+variable "basic_auth_user" {
+  description = "When set, Caddy password-protects the whole store (a staging gate) with HTTP basic auth for this username. The Compound webhook path is exempted so fulfillment callbacks still reach the store. Empty = no basic auth."
+  type        = string
+  default     = ""
+}
+
+variable "basic_auth_hash" {
+  description = "bcrypt hash of the basic-auth password (generate with `caddy hash-password` or `htpasswd -bnBC 10 '' <pass>`). Stored as a hash, never plaintext. Required when basic_auth_user is set."
+  type        = string
+  default     = ""
+}
+
 # --- WordPress ----------------------------------------------------------------
 
 variable "site_title" {
