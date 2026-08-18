@@ -1,8 +1,63 @@
-# Merchant compliance checklist
+# Merchant storefront compliance SOP
 
 The plugin enforces the storefront controls that can be implemented technically. This document is
 an operating checklist, not legal advice. The merchant remains responsible for reviewing every live
 page, product, document, jurisdiction, and processor requirement before accepting orders.
+
+## Scope and change control
+
+This SOP applies to every storefront-affecting change in this repository, including PHP, JavaScript,
+CSS, templates, seed scripts, product fixtures, documentation, checkout behavior, marketing copy,
+metadata, structured data, and generated demo content.
+
+- Treat every requirement in this document as a release-blocking invariant.
+- Do not remove, bypass, hide, weaken, or make optional any required control.
+- Do not introduce noncompliant sample text even when it is marked as test or demo content.
+- Do not infer that a processor, gateway, theme, or WooCommerce update replaces these controls.
+- If a requested change conflicts with this SOP, stop and clearly identify the conflict before
+  implementing it.
+- A requirement may only be changed when the repository owner explicitly directs that exact policy
+  change. Update this SOP and the implementation together so they cannot drift.
+
+## Required storefront controls
+
+Every deployable storefront must satisfy all of the following:
+
+- Show a blocking 21+ age-verification popup before site content can be accessed.
+- Require account creation or sign-in to complete a purchase; guest checkout must remain disabled.
+- Require a separate Terms & Conditions acceptance checkbox at checkout.
+- Publish Terms & Conditions, Privacy, Shipping, Refunds/Returns, and Chargeback policies.
+- Display accepted card-network marks at checkout or in the footer.
+- List at least two current contact methods, such as a monitored email address and phone number.
+- Give every product an image, description, price, and public product-specific COA link.
+- Disable or moderate reviews so no outcome, effect, or other prohibited testimonial is published.
+
+## Product and content rules
+
+These rules apply everywhere content can appear, including product names, descriptions, categories,
+bundles, menus, images, alt text, reviews, policy examples, SEO fields, schema, email templates, seed
+data, and tests visible to a shopper.
+
+- Use scientific product names only.
+- Do not use pharmaceutical brand names, including Wegovy, Ozempic, Zepbound, or similar names.
+- Limit product content to neutral scientific identity, composition, and analytical information.
+- Scientific multi-product combinations are permitted, but do not frame them as usage “stacks.”
+- Do not make health, anti-aging, performance, wellness, weight-loss, or recovery claims.
+- Do not provide dosage guidance, protocols, cycles, administration instructions, or directions for
+  use.
+- Do not publish testimonials or reviews that reference outcomes, benefits, or effects.
+
+## Required implementation behavior
+
+The compliance layer must fail closed where practical:
+
+- Products without an image, description, price, or COA must not proceed through checkout.
+- A missing or unassigned terms page must be treated as a configuration defect before launch.
+- Account-only checkout and the age gate must work with both classic and block-based WooCommerce
+  experiences used by the store.
+- Compliance controls must remain usable on mobile devices and accessible by keyboard.
+- Styling changes must not visually obscure required notices, checkboxes, COA links, policy links,
+  contact details, card marks, or the age gate.
 
 ## Enforced by the plugin
 
@@ -45,3 +100,31 @@ Before publishing or updating any product, bundle, page, image, metadata, SEO co
 - Remove testimonials or quotations that describe outcomes or effects.
 - Confirm Terms & Conditions, Privacy, Shipping, Refunds/Returns, and Chargeback policies remain
   accurate for actual operations and applicable law.
+
+## Engineering workflow
+
+For every storefront-affecting change:
+
+1. Read this SOP before editing.
+2. Identify which required controls or content surfaces the change touches.
+3. Preserve fail-closed behavior and both classic/block checkout compatibility where applicable.
+4. Search new or modified shopper-facing text for prohibited brands, claims, dosage language,
+   protocols, cycles, usage stacks, and testimonials.
+5. Validate the most focused relevant PHP, JavaScript, shell, lint, and storefront checks available.
+6. Report any requirement that depends on merchant documents, real product data, legal review, or
+   production configuration and cannot be completed in source code.
+
+## Release checklist
+
+Before production release, confirm:
+
+- The age gate appears for a new browser and prevents under-21 access.
+- Guest checkout is unavailable and account creation/sign-in is required.
+- Terms acceptance is separate, visible, linked, and required.
+- Every policy is published, linked, and contains current merchant-specific terms.
+- Every live product has a real image, scientific description, current price, and lot-specific COA.
+- Product names and all shopper-facing content pass the product and content rules above.
+- Reviews and testimonials contain no claims, outcomes, effects, protocols, or dosage guidance.
+- Current email and phone contact methods are visible and monitored.
+- Card-network marks are visible.
+- The merchant has supplied the external evidence listed above through an approved secure channel.
