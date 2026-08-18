@@ -41,6 +41,16 @@ resource "aws_instance" "this" {
   # which re-syncs the S3 bundle onto the running instance instead.
   user_data_replace_on_change = false
 
+  # Same reasoning, for the same reason. The AMI comes from the rolling
+  # "ami-amazon-linux-latest" SSM pointer, so Amazon publishing a new AL2023 image
+  # changes this value and forces replacement - which destroys the database, uploads,
+  # and TLS certificates on the next apply, whatever that apply was actually for.
+  # Ignore it so a fresh image is picked up when the instance is deliberately rebuilt,
+  # never as a side effect of an unrelated change.
+  lifecycle {
+    ignore_changes = [ami]
+  }
+
   # The bundle must exist in S3 before user-data tries to download it.
   depends_on = [
     aws_s3_object.plugin,

@@ -47,6 +47,12 @@ variable "allowed_https_cidrs" {
   default     = ["0.0.0.0/0"]
 }
 
+variable "redirect_domains" {
+  description = "Extra hostnames that must NOT serve the store but should still answer, e.g. a parked apex and www. Caddy issues a certificate for each and 301s every path to site_domain. Pure redirect, never a proxy: the age gate and the staging basic-auth gate live on the canonical host and are never bypassed. DNS for each name must already point an A record at the Elastic IP, or its ACME (HTTP-01) challenge fails."
+  type        = list(string)
+  default     = []
+}
+
 variable "acme_email" {
   description = "Contact email for Let's Encrypt (expiry notices). Optional - leave empty to issue anonymously."
   type        = string

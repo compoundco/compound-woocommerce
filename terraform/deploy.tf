@@ -80,10 +80,11 @@ resource "aws_s3_object" "caddyfile" {
   key    = "Caddyfile"
 
   content = templatefile("${path.module}/templates/Caddyfile.tftpl", {
-    hostname        = local.hostname
-    acme_email      = var.acme_email
-    basic_auth_user = var.basic_auth_user
-    basic_auth_hash = var.basic_auth_hash
+    hostname         = local.hostname
+    redirect_domains = var.redirect_domains
+    acme_email       = var.acme_email
+    basic_auth_user  = var.basic_auth_user
+    basic_auth_hash  = var.basic_auth_hash
   })
 }
 

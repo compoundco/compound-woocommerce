@@ -29,3 +29,15 @@ ${hostname} {
 		header_up X-Forwarded-Proto https
 	}
 }
+
+%{~ if length(redirect_domains) > 0 }
+
+# Parked names pointed at this box that must not serve the store. Without a site block
+# they resolve here and fail TLS outright, which shows a browser security warning rather
+# than a redirect. This gives each one a certificate and sends it to the canonical host.
+# Redirect only - no reverse_proxy - so no storefront content is reachable here and the
+# 21+ age gate and staging basic-auth gate on ${hostname} are never bypassed.
+${join(", ", redirect_domains)} {
+	redir https://${hostname}{uri} permanent
+}
+%{~ endif }

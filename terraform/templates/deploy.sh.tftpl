@@ -36,7 +36,15 @@ ssm_get() {
 chmod 600 "$APP_DIR/.env"
 
 aws s3 cp --only-show-errors "s3://$BUCKET/docker-compose.yml" "$APP_DIR/docker-compose.yml"
-aws s3 cp --only-show-errors "s3://$BUCKET/Caddyfile" "$APP_DIR/Caddyfile"
+# The same inode trap documented for the plugin directory below, and easy to miss here
+# because it fails silently instead of loudly. Caddyfile is bind-mounted as a single FILE
+# into the running caddy container, and a bind mount follows the inode, not the path.
+# `aws s3 cp` writes a NEW inode, so the container goes on serving the old config forever:
+# the deploy reports success, the file on the host is correct, and nothing changes. Rewrite
+# the existing file in place instead, so the mount stays pointed at live bytes.
+aws s3 cp --only-show-errors "s3://$BUCKET/Caddyfile" /tmp/Caddyfile
+touch "$APP_DIR/Caddyfile"
+cat /tmp/Caddyfile > "$APP_DIR/Caddyfile"
 aws s3 cp --only-show-errors "s3://$BUCKET/provision.sh" "$APP_DIR/provision.sh"
 aws s3 cp --only-show-errors "s3://$BUCKET/compound-woocommerce.zip" /tmp/compound-woocommerce.zip
 chmod +x "$APP_DIR/provision.sh"
@@ -55,5 +63,12 @@ chmod -R a+rX "$APP_DIR/compound-woocommerce"
 # --quiet-pull: layer-by-layer progress is tens of thousands of stderr lines, which
 # buries the actual error when a deploy fails.
 docker compose --project-directory "$APP_DIR" up -d --remove-orphans --quiet-pull
+
+# Caddy re-reads its config only when told to, so a changed Caddyfile needs an explicit
+# reload (a no-op when nothing changed). Recreating the container is the fallback: it is
+# cheap because issued certificates live in the caddy_data volume, not the container.
+docker compose --project-directory "$APP_DIR" exec -T caddy \
+  caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile 2>/dev/null \
+  || docker compose --project-directory "$APP_DIR" up -d --force-recreate caddy
 
 "$APP_DIR/provision.sh"
