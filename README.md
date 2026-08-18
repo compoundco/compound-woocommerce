@@ -7,6 +7,11 @@ Compound TS/Go monorepo.
 
 ## What it does
 
+The plugin also includes merchant storefront controls for Compound's restricted-product compliance
+program: a 21+ age gate, account-only checkout, WooCommerce terms acceptance, per-product COA links,
+required product-data checks, disabled product reviews, and footer card marks. See
+[`COMPLIANCE.md`](COMPLIANCE.md) for the technical controls and merchant evidence checklist.
+
 At checkout, on Place Order, the gateway:
 
 1. **Creates a Compound order (order-first)** via `POST /v1/orders`, sending only `{sku, quantity}`
@@ -98,10 +103,10 @@ bin/smoke-test.sh
 
 | SKU | Product | Price |
 |---|---|---|
-| `glp1-starter` | GLP-1 Starter | $199 |
-| `glp1-plus` | GLP-1 Plus | $299 |
-| `tirz-pro` | Tirzepatide Pro | $399 |
-| `recovery-bpc` | Recovery BPC-157 | $149 |
+| `glp1-starter` | Semaglutide 5 mg/mL | $199 |
+| `glp1-plus` | Semaglutide 10 mg/mL | $299 |
+| `tirz-pro` | Tirzepatide 10 mg/mL | $399 |
+| `recovery-bpc` | Pentadecapeptide BPC-157 5 mg | $149 |
 
 These match `apps/admin-portal/.../api/dev/seed/catalog` so a storefront checkout works out of the box.
 

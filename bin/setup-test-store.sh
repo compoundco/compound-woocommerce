@@ -30,14 +30,14 @@ GW_PAYMENTS_URL="${GW_PAYMENTS_URL:-http://host.docker.internal:4005}"
 STORE_WEBHOOK_URL="${COMPOUND_STORE_WEBHOOK_URL:-http://localhost:8888/wp-json/compound/v1/webhook}"
 WEBHOOK_SECRET="${COMPOUND_WEBHOOK_SECRET:-dev-webhook-secret}"
 
-# Storefront products. Each entry: sku|name|price|blurb. The SKUs match the Compound
+# Storefront products. Each entry: sku|name|price|scientific description. The SKUs match the Compound
 # catalog seeded by the compound repo's `make seed` (scripts/seed-demo.sh) so a
 # checkout resolves; keep the two lists in sync.
 PRODUCTS=(
-  "glp1-starter|GLP-1 Starter|199|Semaglutide 5 mg/mL - a gentle starting dose."
-  "glp1-plus|GLP-1 Plus|299|Semaglutide 10 mg/mL - for established protocols."
-  "tirz-pro|Tirzepatide Pro|399|Tirzepatide 10 mg/mL - dual-agonist."
-  "recovery-bpc|Recovery BPC-157|149|BPC-157 5 mg - recovery support."
+  "glp1-starter|Semaglutide 5 mg/mL|199|Semaglutide is a synthetic peptide with the molecular formula C187H291N45O59. This listing provides product identity and analytical information only."
+  "glp1-plus|Semaglutide 10 mg/mL|299|Semaglutide is a synthetic peptide with the molecular formula C187H291N45O59. This listing provides product identity and analytical information only."
+  "tirz-pro|Tirzepatide 10 mg/mL|399|Tirzepatide is a synthetic peptide with the molecular formula C225H348N48O68. This listing provides product identity and analytical information only."
+  "recovery-bpc|Pentadecapeptide BPC-157 5 mg|149|BPC-157 is a synthetic pentadecapeptide with the molecular formula C62H98N16O22. This listing provides product identity and analytical information only."
 )
 
 # --- WP-CLI via the running test-site container (wp-env or docker-compose) ------
@@ -105,15 +105,20 @@ echo "==> WooCommerce: seed the storefront products (SKUs matched to the Compoun
 for id in $(wp wc product list --user=admin --field=id 2>/dev/null); do wp wc product delete "$id" --force --user=admin >/dev/null 2>&1; done
 for row in "${PRODUCTS[@]}"; do
   IFS='|' read -r sku name price blurb <<< "$row"
-  wp wc product create --user=admin --name="$name" --sku="$sku" --regular_price="$price" \
-    --short_description="$blurb" --type=simple --manage_stock=false >/dev/null 2>&1
+  coa_id="$(wp post create --post_type=page --post_status=publish --post_title="Certificate of Analysis - $name" \
+    --post_content="<h2>Certificate of Analysis</h2><table><tr><th>Analyte</th><td>$name</td></tr><tr><th>Method</th><td>HPLC identity and purity analysis</td></tr><tr><th>Result</th><td>Demo laboratory record - replace with the lot-specific third-party report before live sale.</td></tr></table>" --porcelain)"
+  coa_url="$(wp post url "$coa_id")"
+  image_id="$(wp eval '$upload=wp_upload_dir();$name="compound-product-".wp_generate_uuid4().".png";$path=$upload["path"]."/".$name;$image=imagecreatetruecolor(800,800);$bg=imagecolorallocate($image,241,245,249);$ink=imagecolorallocate($image,15,23,42);imagefill($image,0,0,$bg);imagestring($image,5,300,390,"Scientific Product",$ink);imagepng($image,$path);imagedestroy($image);$attachment=array("post_mime_type"=>"image/png","post_title"=>"Scientific product image","post_status"=>"inherit");$id=wp_insert_attachment($attachment,$path);require_once ABSPATH."wp-admin/includes/image.php";wp_update_attachment_metadata($id,wp_generate_attachment_metadata($id,$path));echo $id;')"
+  product_id="$(wp wc product create --user=admin --name="$name" --sku="$sku" --regular_price="$price" \
+    --description="$blurb" --short_description="$blurb" --type=simple --manage_stock=false \
+    --images="[{\"id\":$image_id}]" --meta_data="[{\"key\":\"_compound_coa_url\",\"value\":\"$coa_url\"}]" --porcelain)"
   echo "    $sku  $name  \$$price"
 done
 
 echo "==> WooCommerce: theme + branding (Storefront)"
 wp theme install storefront --activate >/dev/null 2>&1 || true
 wp option update blogname "Acme Peptides" >/dev/null 2>&1
-wp option update blogdescription "Research peptides, shipped fast" >/dev/null 2>&1
+wp option update blogdescription "Scientific product information and analytical documentation" >/dev/null 2>&1
 wp option update woocommerce_currency USD >/dev/null 2>&1
 wp rewrite structure '/%postname%/' >/dev/null 2>&1 || true
 SHOP="$(wp option get woocommerce_shop_page_id 2>/dev/null || echo '')"
@@ -125,6 +130,30 @@ wp theme mod set storefront_accent_color "#2563eb" >/dev/null 2>&1 || true
 wp theme mod set button_background_color "#2563eb" >/dev/null 2>&1 || true
 wp theme mod set button_text_color "#ffffff" >/dev/null 2>&1 || true
 wp theme mod set storefront_footer_background_color "#0f172a" >/dev/null 2>&1 || true
+
+echo "==> WordPress: publish required policies and contact information"
+create_page() {
+  local title="$1" slug="$2" content="$3"
+  local existing
+  existing="$(wp post list --post_type=page --name="$slug" --field=ID --format=ids)"
+  if [ -n "$existing" ]; then
+    wp post update "$existing" --post_title="$title" --post_content="$content" --post_status=publish >/dev/null
+    printf '%s' "$existing"
+  else
+    wp post create --post_type=page --post_status=publish --post_title="$title" --post_name="$slug" --post_content="$content" --porcelain
+  fi
+}
+terms_id="$(create_page "Terms & Conditions" "terms-and-conditions" "Customers must be 21 or older and maintain an account. Products are presented with scientific information only. By ordering, the customer accepts these terms and all posted store policies.")"
+privacy_id="$(create_page "Privacy Policy" "privacy-policy" "We collect account, contact, shipping, and transaction information needed to operate the store, fulfill orders, prevent fraud, and meet legal obligations. Contact privacy@example.com for privacy requests.")"
+create_page "Shipping Policy" "shipping-policy" "Orders are processed after payment and compliance review. Available destinations, carriers, delivery estimates, and any temperature-control requirements are shown during fulfillment. Delays may occur and delivery dates are not guaranteed." >/dev/null
+create_page "Refunds & Returns Policy" "refunds-and-returns" "Contact support@example.com before requesting a return. Eligibility depends on product condition, chain of custody, applicable law, and fulfillment status. Approved refunds return to the original payment method." >/dev/null
+create_page "Chargeback Policy" "chargeback-policy" "Contact support@example.com or +1 (555) 010-2026 first so we can investigate billing or fulfillment concerns. Fraudulent or abusive disputes may be contested using order and delivery records." >/dev/null
+create_page "Contact" "contact" "Email: <a href=\"mailto:support@example.com\">support@example.com</a><br>Phone: <a href=\"tel:+15550102026\">+1 (555) 010-2026</a>" >/dev/null
+wp option update woocommerce_terms_page_id "$terms_id" >/dev/null
+wp option update wp_page_for_privacy_policy "$privacy_id" >/dev/null
+wp option update woocommerce_enable_guest_checkout no >/dev/null
+wp option update woocommerce_enable_checkout_login_reminder yes >/dev/null
+wp option update woocommerce_enable_signup_and_login_from_checkout yes >/dev/null
 
 echo "==> WooCommerce: enable + configure the Compound gateway"
 wp option update woocommerce_compound_settings \
