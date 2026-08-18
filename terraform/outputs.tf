@@ -60,3 +60,10 @@ output "bootstrap_log_command" {
   description = "Watch the first boot provision itself."
   value       = "aws ssm start-session --region ${var.region} --target ${aws_instance.this.id} --document-name AWS-StartInteractiveCommand --parameters command='tail -f /var/log/compound-store-bootstrap.log'"
 }
+
+# The store this state holds. Used by bin/aws-deploy.sh to refuse a mismatched
+# workspace/var-file pair before an apply rewrites one store into the other.
+output "store_name" {
+  description = "Value of var.name in this workspace's state."
+  value       = var.name
+}

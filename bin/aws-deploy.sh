@@ -1,23 +1,54 @@
 #!/usr/bin/env bash
-# Push the current plugin code + store config to the running AWS test store.
+# Push the current plugin code + store config to the running AWS store.
 #
 # `terraform apply` refreshes the deploy bundle in S3; this then tells the
 # instance to pull it and re-run provisioning. The instance is never replaced, so
 # the database, uploads, and TLS certificate survive.
 #
-#   make aws-deploy
+#   make aws-deploy        # staging store, default workspace
+#   make aws-deploy-prod   # production store, prod workspace
+#
+# There are two stores sharing this config, separated by Terraform workspace. The
+# workspace and the var-file have to move together: applying prod.tfvars against the
+# default workspace would rewrite the staging store into the production one. Both are
+# passed explicitly rather than inferred, so a wrong pair is a visible mistake here
+# instead of a silent one in AWS.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 TF_DIR=terraform
+WORKSPACE=default
+VAR_FILE=terraform.tfvars
 
-if [ ! -f "$TF_DIR/terraform.tfstate" ] && [ ! -d "$TF_DIR/.terraform" ]; then
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --workspace) WORKSPACE="$2"; shift 2 ;;
+    --var-file) VAR_FILE="$2"; shift 2 ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
+
+if [ ! -d "$TF_DIR/.terraform" ]; then
   echo "No Terraform state yet. Stand the store up first:  make aws-up"
   exit 1
 fi
 
+echo "==> workspace $WORKSPACE, var-file $VAR_FILE"
+terraform -chdir="$TF_DIR" workspace select "$WORKSPACE"
+
+# Guard the pair. The store's `name` is what every unique resource derives from, so a
+# mismatched workspace/var-file combination shows up here as the state's name not
+# matching the file's - before apply rewrites one store into the other.
+WANT_NAME="$(grep -E '^\s*name\s*=' "$TF_DIR/$VAR_FILE" | head -1 | sed 's/.*=\s*"\(.*\)"/\1/')"
+HAVE_NAME="$(terraform -chdir="$TF_DIR" output -raw store_name 2>/dev/null || echo "")"
+if [ -n "$HAVE_NAME" ] && [ -n "$WANT_NAME" ] && [ "$HAVE_NAME" != "$WANT_NAME" ]; then
+  echo "REFUSING: workspace '$WORKSPACE' holds store '$HAVE_NAME', but $VAR_FILE says '$WANT_NAME'." >&2
+  echo "Applying this pair would rewrite one store into the other." >&2
+  exit 1
+fi
+
 echo "==> terraform apply (uploads the plugin + config bundle to S3)"
-terraform -chdir="$TF_DIR" apply -input=false -auto-approve
+terraform -chdir="$TF_DIR" apply -input=false -auto-approve -var-file="$VAR_FILE"
 
 INSTANCE="$(terraform -chdir="$TF_DIR" output -raw instance_id)"
 REGION="$(terraform -chdir="$TF_DIR" output -raw region)"

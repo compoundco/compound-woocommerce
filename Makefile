@@ -7,6 +7,15 @@
 COMPOSE = docker compose -f docker-compose.test.yml
 TF = terraform -chdir=terraform
 
+# Two stores, two Terraform workspaces over the same config, each with its own state:
+#   default -> staging, stg.chefspeps.com, wired to Compound staging (terraform.tfvars)
+#   prod    -> production, chefspeps.com, wired to Compound production (prod.tfvars)
+# The workspace and the var-file must always move together - applying prod.tfvars in the
+# default workspace would rewrite the staging store into the production one. The *-prod
+# targets below bind the pair, so never call terraform directly for the prod store.
+TF_PROD = terraform -chdir=terraform
+PROD_WS = prod
+
 .PHONY: help
 help: ## List available commands
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -102,6 +111,38 @@ aws-logs: ## Tail the first-boot bootstrap log on the instance
 	  --target $$($(TF) output -raw instance_id) \
 	  --document-name AWS-StartInteractiveCommand \
 	  --parameters command='tail -n 200 -f /var/log/compound-store-bootstrap.log'
+
+.PHONY: aws-up-prod
+aws-up-prod: ## Stand up / update the PRODUCTION store at chefspeps.com (separate instance)
+	@[ -f terraform/prod.tfvars ] || { echo "terraform/prod.tfvars not found."; exit 1; }
+	$(TF_PROD) init -input=false
+	$(TF_PROD) workspace select -or-create $(PROD_WS)
+	$(TF_PROD) apply -input=false -var-file=prod.tfvars
+	@echo ""
+	@echo "  Store:  $$($(TF_PROD) output -raw site_url)"
+	@echo "  IP:     $$($(TF_PROD) output -raw public_ip)   <- point chefspeps.com + www here"
+	@echo ""
+	@echo "  Caddy cannot issue a certificate until those A records resolve to that IP."
+
+.PHONY: aws-deploy-prod
+aws-deploy-prod: ## Push the current plugin code + config to the PRODUCTION store
+	$(TF_PROD) workspace select $(PROD_WS)
+	bash bin/aws-deploy.sh --workspace $(PROD_WS) --var-file prod.tfvars
+
+.PHONY: aws-url-prod
+aws-url-prod: ## Print the PRODUCTION store's URLs + Elastic IP
+	@$(TF_PROD) workspace select $(PROD_WS) >/dev/null
+	@echo "Store:    $$($(TF_PROD) output -raw site_url)"
+	@echo "Admin:    $$($(TF_PROD) output -raw admin_url)"
+	@echo "Webhook:  $$($(TF_PROD) output -raw webhook_url)"
+	@echo "IP:       $$($(TF_PROD) output -raw public_ip)"
+
+.PHONY: aws-creds-prod
+aws-creds-prod: ## Print the PRODUCTION store's WordPress login + webhook secret
+	@$(TF_PROD) workspace select $(PROD_WS) >/dev/null
+	@echo "user:            $$($(TF_PROD) output -raw wp_admin_user)"
+	@echo "password:        $$($(TF_PROD) output -raw wp_admin_password)"
+	@echo "webhook secret:  $$($(TF_PROD) output -raw compound_webhook_secret)"
 
 .PHONY: aws-down
 aws-down: ## Tear the AWS store down (destroys the instance and all its data)
