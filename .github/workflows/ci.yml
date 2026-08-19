@@ -1,0 +1,76 @@
+# Required checks for every pull request into stage or main.
+name: CI
+
+on:
+  pull_request:
+    branches: [main, stage]
+  push:
+    branches: [main, stage]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  php:
+    name: php lint + coding standards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          coverage: none
+          tools: composer
+
+      # A parse error in a plugin file takes the whole storefront down with a white screen,
+      # so syntax-check every PHP file before anything subtler.
+      - name: Syntax check
+        run: find . -path ./vendor -prune -o -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Install dev dependencies
+        run: composer install --no-interaction --no-progress
+
+      - name: Coding standards
+        run: composer run lint
+
+  shell:
+    name: shell scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # bin/ scripts stand stores up and deploy them; a syntax error surfaces halfway
+      # through a deploy otherwise.
+      - name: Syntax check
+        run: for f in bin/*.sh; do bash -n "$f"; done
+
+      - name: ShellCheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck --severity=error bin/*.sh
+
+  compliance:
+    name: storefront content rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # COMPLIANCE.md forbids pharmaceutical brand names in any shopper-facing content,
+      # including seed data and fixtures. This catches the obvious violations mechanically;
+      # it does not replace the manual pre-publication review in the SOP, which covers
+      # claims and dosage language that no grep can reliably detect.
+      - name: No pharmaceutical brand names
+        run: |
+          set -euo pipefail
+          if grep -rniE '\b(wegovy|ozempic|zepbound|mounjaro|saxenda|trulicity)\b' \
+               --include='*.php' --include='*.js' --include='*.sh' --include='*.tftpl' \
+               --exclude-dir=vendor --exclude-dir=node_modules . ; then
+            echo "::error::Pharmaceutical brand name found in storefront content (COMPLIANCE.md)."
+            exit 1
+          fi
+          echo "no brand names found"
