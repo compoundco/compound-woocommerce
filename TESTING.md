@@ -13,6 +13,26 @@ WooCommerce checkout (Card - Compound)
   → the WooCommerce order status + notes update
 ```
 
+## Sandbox payment values
+
+These values work only when the Compound gateway environment is **Sandbox**. WooCommerce maps
+them to opaque scenario tokens before calling the Payments API; no real payment data or money is
+involved.
+
+| Rail | Input | Result |
+|---|---|---|
+| Card | `4242424242424242` | Captured |
+| Card | `4000000000000002` | Invalid payment method |
+| Card | `4000000000009995` | Insufficient funds |
+| Card | `4000000000000119` | Retryable processor decline |
+| ACH | Routing `110000000`, account `000123456789` | Captured and held pending settlement |
+| ACH | Routing `110000000`, account `000111111113` | Insufficient funds |
+| ACH | Routing `110000000`, account `000111111116` | Account closed |
+| ACH | Routing `110000000`, account `000111111119` | Retryable processor decline |
+| Crypto | `crypto_success` | Captured |
+| Crypto | `crypto_declined` | Declined |
+| Crypto | `crypto_retryable` | Retryable processor decline |
+
 You watch it in two places: the **WooCommerce order** (`/wp-admin`) and the **Compound admin
 portal** (`http://localhost:3000`, brand login `demo@acmepeptides.com` / `compound-demo-2026`).
 

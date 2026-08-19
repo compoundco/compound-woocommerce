@@ -81,16 +81,21 @@ class WC_Compound_API {
 	 * @param string $order_id        Compound order id.
 	 * @param int    $amount_cents    Amount in cents (must match the order).
 	 * @param string $idempotency_key Stable per-charge key.
+	 * @param array  $payment_method Opaque, tokenized funding-source data.
 	 * @return array|WP_Error Decoded charge on success.
 	 */
-	public function create_charge( string $order_id, int $amount_cents, string $idempotency_key, string $method_type = 'card' ) {
+	public function create_charge( string $order_id, int $amount_cents, string $idempotency_key, string $method_type = 'card', array $payment_method = array() ) {
+		$body = array(
+			'order_id'    => $order_id,
+			'amount'      => $amount_cents,
+			'method_type' => $method_type,
+		);
+		if ( $payment_method ) {
+			$body['payment_method'] = $payment_method;
+		}
 		return $this->post(
 			$this->payments_url . '/v1/charges',
-			array(
-				'order_id'    => $order_id,
-				'amount'      => $amount_cents,
-				'method_type' => $method_type,
-			),
+			$body,
 			$idempotency_key
 		);
 	}

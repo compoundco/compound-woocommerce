@@ -16,7 +16,8 @@ if [ -z "$CLI" ]; then
   exit 1
 fi
 
-docker exec "$CLI" wp --allow-root eval '
+TEST_METHOD="${METHOD:-card}"
+docker exec -e COMPOUND_TEST_METHOD="$TEST_METHOD" "$CLI" wp --allow-root eval '
 $pid = wc_get_product_id_by_sku("glp1-starter");
 if (!$pid) { fwrite(STDERR, "no product for sku glp1-starter; run: make seed\n"); exit(1); }
 $order = wc_create_order();
@@ -30,6 +31,16 @@ $order->set_shipping_state("CA");
 $order->set_shipping_postcode("94016");
 $order->set_shipping_country("US");
 $order->calculate_totals();
+$method = getenv("COMPOUND_TEST_METHOD") ?: "card";
+$_POST["compound_method"] = $method;
+if ($method === "ach") {
+  $_POST["compound_ach_routing_number"] = "110000000";
+  $_POST["compound_ach_account_number"] = "000123456789";
+} elseif ($method === "crypto") {
+  $_POST["compound_crypto_reference"] = "crypto_success";
+} else {
+  $_POST["compound_card_number"] = "4242424242424242";
+}
 $gw = new WC_Gateway_Compound();
 $res = $gw->process_payment($order->get_id());
 $order = wc_get_order($order->get_id());

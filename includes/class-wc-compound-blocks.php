@@ -3,8 +3,8 @@
  * Registers the Compound gateway with the WooCommerce Cart/Checkout blocks. A classic
  * WC_Payment_Gateway is invisible to the block checkout ("no payment methods available")
  * unless it also ships a block integration - this is that integration. It renders the same
- * card / crypto rail chooser as the classic checkout and hands the choice back to the
- * server (as compound_method) so WC_Gateway_Compound::process_payment works unchanged.
+ * card / bank transfer / crypto rail chooser as the classic checkout and hands the choice back
+ * to the server (as compound_method) so WC_Gateway_Compound::process_payment works unchanged.
  *
  * @package Compound\WooCommerce
  */
@@ -54,6 +54,8 @@ class WC_Compound_Blocks extends AbstractPaymentMethodType {
 			'title'       => (string) ( $this->settings['title'] ?? __( 'Compound', 'compound-woocommerce' ) ),
 			'description' => (string) ( $this->settings['description'] ?? '' ),
 			'methods'     => WC_Gateway_Compound::method_labels(),
+			'sandbox'     => 'sandbox' === ( $this->settings['environment'] ?? 'sandbox' ),
+			'testValues'  => WC_Gateway_Compound::sandbox_test_values(),
 			'supports'    => array( 'products', 'refunds' ),
 		);
 	}

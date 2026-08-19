@@ -48,7 +48,7 @@ sim-exception: ## Simulate a cold-chain excursion (ORDER=<compound_order_id>)
 	bash bin/sim-fulfillment.sh exception $(ORDER)
 
 .PHONY: smoke
-smoke: ## Headless checkout against the Compound stack; prints WC status + Compound order id
+smoke: ## Headless checkout (METHOD=card|ach|crypto); prints WC status + Compound order id
 	bash bin/smoke-test.sh
 
 .PHONY: down
