@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   php:
-    name: php lint + coding standards
+    name: php syntax
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,12 +25,32 @@ jobs:
         with:
           php-version: '8.1'
           coverage: none
-          tools: composer
 
       # A parse error in a plugin file takes the whole storefront down with a white screen,
-      # so syntax-check every PHP file before anything subtler.
+      # so this one is required: it must never be possible to merge unparseable PHP.
       - name: Syntax check
         run: find . -path ./vendor -prune -o -name '*.php' -print0 | xargs -0 -n1 php -l
+
+  phpcs:
+    name: php coding standards (advisory)
+    runs-on: ubuntu-latest
+    # ADVISORY, not required to merge. phpcs currently reports pre-existing violations
+    # across files nobody is touching - missing doc comments, spacing, comment punctuation
+    # - so making it required would block every merge on unrelated debt. It runs so the
+    # count is visible and does not grow silently.
+    #
+    # To promote it to required: run `composer install && vendor/bin/phpcbf` for the
+    # auto-fixable ones, fix the remainder, then drop continue-on-error here and add
+    # "php coding standards (advisory)" to the branch's required status checks.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          coverage: none
+          tools: composer
 
       - name: Install dev dependencies
         run: composer install --no-interaction --no-progress
