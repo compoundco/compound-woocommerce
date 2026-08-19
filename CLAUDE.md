@@ -28,6 +28,8 @@ direct pushes.
 - If you already have edits on `main` or `stage`, branch first and move them there.
 - Open a pull request into `stage`. CI runs PHP lint and coding standards, shell checks,
   and the storefront content rules; all must pass before it can merge.
+- `main` only accepts pull requests from `stage`. A required check rejects any other
+  source branch, so nothing reaches `main` without having gone through `stage` first.
 - Promote by opening a pull request from `stage` into `main`.
 
 The content check greps for pharmaceutical brand names, which is the one part of

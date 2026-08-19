@@ -1,0 +1,40 @@
+# Only `stage` may merge into `main`.
+#
+# GitHub has no native rule for "restrict which branch may target this one", so this is a
+# required status check on main that inspects the pull request's source branch. It runs
+# ONLY on pull requests targeting main, which is deliberate: a check that is skipped never
+# reports a conclusion, and a required check that never reports blocks a pull request
+# forever rather than failing it. Keeping the trigger narrow means it always runs, and
+# always reaches a verdict, on exactly the pull requests it gates.
+#
+# The effect is that production can only ever receive what staging has already been
+# running. A feature branch cannot reach main directly, so nothing arrives in production
+# without having been deployed to, and observed in, staging first.
+name: Promotion
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    name: promotion source
+    runs-on: ubuntu-latest
+    steps:
+      - name: Only stage may merge into main
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if [ "$HEAD_REF" != "stage" ]; then
+            echo "::error::main only accepts merges from stage; this pull request is from '$HEAD_REF'."
+            echo ""
+            echo "Production takes what staging has already been running. To ship this:"
+            echo "  1. open a pull request from '$HEAD_REF' into stage"
+            echo "  2. merge it, and let it deploy to staging"
+            echo "  3. open a pull request from stage into main"
+            exit 1
+          fi
+          echo "source is stage; promotion allowed"
