@@ -82,7 +82,7 @@ variable "basic_auth_hash" {
 variable "site_title" {
   description = "WordPress site title."
   type        = string
-  default     = "Acme Peptides"
+  default     = "Chefs Peps"
 }
 
 variable "wp_admin_user" {

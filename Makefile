@@ -28,7 +28,7 @@ dev: ## Bring up + provision the WordPress + WooCommerce demo store (:8888)
 	@$(COMPOSE) up -d >/dev/null
 	@until $(COMPOSE) exec -T cli wp core version >/dev/null 2>&1; do sleep 3; done
 	@if ! $(COMPOSE) exec -T cli wp core is-installed >/dev/null 2>&1; then \
-	  $(COMPOSE) exec -T cli wp core install --url=http://localhost:8888 --title="Acme Peptides" --admin_user=admin --admin_password=password --admin_email=admin@example.com --skip-email >/dev/null; \
+	  $(COMPOSE) exec -T cli wp core install --url=http://localhost:8888 --title="Chefs Peps" --admin_user=admin --admin_password=password --admin_email=admin@example.com --skip-email >/dev/null; \
 	  $(COMPOSE) exec -T cli wp core update >/dev/null; \
 	fi
 	@$(COMPOSE) exec -T cli wp plugin is-active woocommerce >/dev/null 2>&1 || $(COMPOSE) exec -T cli wp plugin install /tmp/woocommerce.zip --activate >/dev/null

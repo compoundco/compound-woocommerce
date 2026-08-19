@@ -48,6 +48,10 @@ wp compound sync_coupons        # pulls active Compound coupons -> WooCommerce c
 > card data in the browser. Client-side tokenization via `@compound/checkout-sdk` (so PAN never
 > touches WordPress) is the next increment, gated on the charge API accepting a token.
 
+> Card-network restriction: Mastercard must never be accepted. The plugin does not currently receive
+> a card-network identifier, so every live processor and routing lane must reject Mastercard before
+> card checkout is enabled. The storefront advertises only Visa, American Express, and Discover.
+
 ## Files
 
 ```

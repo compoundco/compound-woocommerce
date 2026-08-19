@@ -27,7 +27,8 @@ Every deployable storefront must satisfy all of the following:
 - Require account creation or sign-in to complete a purchase; guest checkout must remain disabled.
 - Require a separate Terms & Conditions acceptance checkbox at checkout.
 - Publish Terms & Conditions, Privacy, Shipping, Refunds/Returns, and Chargeback policies.
-- Display accepted card-network marks at checkout or in the footer.
+- Display accepted card-network marks at checkout or in the footer. Only Visa, American Express,
+  and Discover may be presented as accepted; Mastercard must never be advertised or accepted.
 - List at least two current contact methods, such as a monitored email address and phone number.
 - Give every product an image, description, price, and public product-specific COA link.
 - Disable or moderate reviews so no outcome, effect, or other prohibited testimonial is published.
@@ -52,6 +53,9 @@ data, and tests visible to a shopper.
 The compliance layer must fail closed where practical:
 
 - Products without an image, description, price, or COA must not proceed through checkout.
+- Mastercard transactions must fail closed. Because the current WooCommerce integration receives
+  only a generic card rail and no card-network identifier, every live processor and routing lane
+  must be configured to reject Mastercard before card checkout is enabled.
 - A missing or unassigned terms page must be treated as a configuration defect before launch.
 - Account-only checkout and the age gate must work with both classic and block-based WooCommerce
   experiences used by the store.
@@ -68,7 +72,8 @@ The compliance layer must fail closed where practical:
 - Each product has a Certificate of Analysis URL field and a public **Lab Report (COA)** product tab.
 - Checkout is blocked when a cart product lacks an image, description, price, or COA URL.
 - Product reviews are disabled so outcome/effect testimonials cannot be published through reviews.
-- Accepted card-network marks appear in the footer.
+- Accepted card-network marks in the footer list only Visa, American Express, and Discover and
+  explicitly state that Mastercard is not accepted.
 
 ## Seeded for development
 
@@ -87,6 +92,8 @@ this source repository.
 - Lot-specific third-party lab report for every individual product; update each product's COA URL
   whenever its offered lot changes.
 - Current support email and phone number monitored by the merchant.
+- Processor and routing configuration evidence showing Mastercard is disabled on every live card
+  lane available to this storefront.
 
 ## Manual pre-publication review
 
@@ -126,5 +133,6 @@ Before production release, confirm:
 - Product names and all shopper-facing content pass the product and content rules above.
 - Reviews and testimonials contain no claims, outcomes, effects, protocols, or dosage guidance.
 - Current email and phone contact methods are visible and monitored.
-- Card-network marks are visible.
+- Card-network marks show only Visa, American Express, and Discover.
+- A Mastercard test transaction is declined in every enabled environment and processor lane.
 - The merchant has supplied the external evidence listed above through an approved secure channel.

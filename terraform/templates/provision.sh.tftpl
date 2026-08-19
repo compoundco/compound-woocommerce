@@ -65,6 +65,17 @@ wp option update woocommerce_task_list_hidden yes >/dev/null 2>&1 || true
 wp rewrite structure '/%postname%/' >/dev/null 2>&1 || true
 wp rewrite flush --hard >/dev/null 2>&1 || true
 
+# The primary navigation always links to this dynamic directory. Create it once,
+# but preserve any merchant-authored replacement on later deploys.
+CERTIFICATES_ID="$(wp post list --post_type=page --name=certificates --field=ID --format=ids)"
+if [ -z "$CERTIFICATES_ID" ]; then
+  wp post create --post_type=page --post_status=publish --post_title="Certificates" \
+    --post_name=certificates --post_content='[compound_certificates]' >/dev/null
+fi
+SHOP_ID="$(wp option get woocommerce_shop_page_id)"
+wp option update show_on_front page >/dev/null
+wp option update page_on_front "$SHOP_ID" >/dev/null
+
 %{ if seed_products ~}
 echo "==> storefront products (SKUs matched to the Compound catalog)"
 # Wipe first so re-running a deploy cannot duplicate the catalog.
@@ -72,25 +83,26 @@ for id in $(wp wc product list --user='${wp_admin_user}' --field=id 2>/dev/null)
   wp wc product delete "$id" --force --user='${wp_admin_user}' >/dev/null 2>&1 || true
 done
 PRODUCTS=(
-  "glp1-starter|GLP-1 Starter|199|Semaglutide 5 mg/mL - a gentle starting dose."
-  "glp1-plus|GLP-1 Plus|299|Semaglutide 10 mg/mL - for established protocols."
-  "tirz-pro|Tirzepatide Pro|399|Tirzepatide 10 mg/mL - dual-agonist."
-  "recovery-bpc|Recovery BPC-157|149|BPC-157 5 mg - recovery support."
+  "glp1-starter|Semaglutide 5 mg/mL|199|Semaglutide is a synthetic peptide with the molecular formula C187H291N45O59. This listing provides product identity and analytical information only.|DEMO-SEM5-001"
+  "glp1-plus|Semaglutide 10 mg/mL|299|Semaglutide is a synthetic peptide with the molecular formula C187H291N45O59. This listing provides product identity and analytical information only.|DEMO-SEM10-001"
+  "tirz-pro|Tirzepatide 10 mg/mL|399|Tirzepatide is a synthetic peptide with the molecular formula C225H348N48O68. This listing provides product identity and analytical information only.|DEMO-TIR10-001"
+  "recovery-bpc|Pentadecapeptide BPC-157 5 mg|149|BPC-157 is a synthetic pentadecapeptide with the molecular formula C62H98N16O22. This listing provides product identity and analytical information only.|DEMO-BPC5-001"
 )
 for row in "$${PRODUCTS[@]}"; do
-  IFS='|' read -r sku name price blurb <<< "$row"
+  IFS='|' read -r sku name price blurb lot <<< "$row"
+  coa_id="$(wp post create --post_type=page --post_status=publish --post_title="Certificate of Analysis - $name" \
+    --post_content="<h2>Certificate of Analysis</h2><table><tr><th>Analyte</th><td>$name</td></tr><tr><th>Lot</th><td>$lot</td></tr><tr><th>Laboratory</th><td>Demo Analytical Laboratory</td></tr><tr><th>Method</th><td>HPLC identity and purity analysis</td></tr><tr><th>Report date</th><td>2026-08-01</td></tr><tr><th>Result</th><td>Demo laboratory record - replace with the lot-specific third-party report before live sale.</td></tr></table>" --porcelain)"
+  coa_url="$(wp post url "$coa_id")"
+  image_id="$(wp eval '$upload=wp_upload_dir();$name="compound-product-".wp_generate_uuid4().".png";$path=$upload["path"]."/".$name;$image=imagecreatetruecolor(800,800);$bg=imagecolorallocate($image,241,245,249);$ink=imagecolorallocate($image,15,23,42);imagefill($image,0,0,$bg);imagestring($image,5,300,390,"Scientific Product",$ink);imagepng($image,$path);imagedestroy($image);$attachment=array("post_mime_type"=>"image/png","post_title"=>"Scientific product image","post_status"=>"inherit");$id=wp_insert_attachment($attachment,$path);require_once ABSPATH."wp-admin/includes/image.php";wp_update_attachment_metadata($id,wp_generate_attachment_metadata($id,$path));echo $id;')"
   wp wc product create --user='${wp_admin_user}' --name="$name" --sku="$sku" \
-    --regular_price="$price" --short_description="$blurb" --type=simple --manage_stock=false >/dev/null 2>&1
+    --regular_price="$price" --description="$blurb" --short_description="$blurb" \
+    --type=simple --manage_stock=false --images="[{\"id\":$image_id}]" \
+    --meta_data="[{\"key\":\"_compound_coa_url\",\"value\":\"$coa_url\"},{\"key\":\"_compound_lot_number\",\"value\":\"$lot\"},{\"key\":\"_compound_lab_name\",\"value\":\"Demo Analytical Laboratory\"},{\"key\":\"_compound_analysis_type\",\"value\":\"HPLC identity and purity\"},{\"key\":\"_compound_coa_date\",\"value\":\"2026-08-01\"}]" >/dev/null 2>&1
   echo "    $sku  $name  \$$price"
 done
 
 echo "==> theme + branding (Storefront)"
 wp theme install storefront --activate >/dev/null 2>&1 || true
-SHOP="$(wp option get woocommerce_shop_page_id 2>/dev/null || echo '')"
-if [ -n "$SHOP" ]; then
-  wp option update show_on_front page >/dev/null 2>&1 || true
-  wp option update page_on_front "$SHOP" >/dev/null 2>&1 || true
-fi
 wp theme mod set storefront_header_background_color "#0f172a" >/dev/null 2>&1 || true
 wp theme mod set storefront_header_text_color "#e2e8f0" >/dev/null 2>&1 || true
 wp theme mod set storefront_header_link_color "#ffffff" >/dev/null 2>&1 || true
