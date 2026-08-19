@@ -1,6 +1,33 @@
 ( function () {
 	'use strict';
 
+	var certificateSearch = document.querySelector( '[data-certificate-search]' );
+	if ( certificateSearch ) {
+		var certificateRows = Array.prototype.slice.call( document.querySelectorAll( '[data-certificate-row]' ) );
+		var certificateEmpty = document.querySelector( '[data-certificate-empty]' );
+		var certificateStatus = document.querySelector( '[data-certificate-status]' );
+
+		certificateSearch.addEventListener( 'input', function () {
+			var query = certificateSearch.value.toLocaleLowerCase().trim();
+			var visibleCount = 0;
+
+			certificateRows.forEach( function ( row ) {
+				var matches = ! query || row.textContent.toLocaleLowerCase().indexOf( query ) !== -1;
+				row.hidden = ! matches;
+				if ( matches ) {
+					visibleCount += 1;
+				}
+			} );
+
+			if ( certificateEmpty ) {
+				certificateEmpty.hidden = visibleCount !== 0;
+			}
+			if ( certificateStatus ) {
+				certificateStatus.textContent = visibleCount + ( visibleCount === 1 ? ' certificate record shown.' : ' certificate records shown.' );
+			}
+		} );
+	}
+
 	var gate = document.querySelector( '[data-compound-age-gate]' );
 	if ( ! gate ) {
 		return;
