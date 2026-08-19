@@ -39,7 +39,11 @@ terraform -chdir="$TF_DIR" workspace select "$WORKSPACE"
 # Guard the pair. The store's `name` is what every unique resource derives from, so a
 # mismatched workspace/var-file combination shows up here as the state's name not
 # matching the file's - before apply rewrites one store into the other.
-WANT_NAME="$(grep -E '^\s*name\s*=' "$TF_DIR/$VAR_FILE" | head -1 | sed 's/.*=\s*"\(.*\)"/\1/')"
+#
+# POSIX classes, not \s: BSD sed (macOS, where this is usually run) does not understand
+# \s and silently leaves the line unsubstituted, so WANT_NAME came out as the whole
+# `name = "compound-store"` line and the guard refused a pair that actually matched.
+WANT_NAME="$(grep -E '^[[:space:]]*name[[:space:]]*=' "$TF_DIR/$VAR_FILE" | head -1 | sed -E 's/^[^=]*=[[:space:]]*"([^"]*)".*/\1/')"
 HAVE_NAME="$(terraform -chdir="$TF_DIR" output -raw store_name 2>/dev/null || echo "")"
 if [ -n "$HAVE_NAME" ] && [ -n "$WANT_NAME" ] && [ "$HAVE_NAME" != "$WANT_NAME" ]; then
   echo "REFUSING: workspace '$WORKSPACE' holds store '$HAVE_NAME', but $VAR_FILE says '$WANT_NAME'." >&2
