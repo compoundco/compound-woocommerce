@@ -16,8 +16,8 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 		$this->method_description = __( 'Route checkout and orders through Compound (payments orchestration + pharmacy fulfillment).', 'compound-woocommerce' );
 		// has_fields = true so the shopper picks a payment method (card / bank transfer / crypto)
 		// at checkout; that choice drives which processors Compound routes across.
-		$this->has_fields         = true;
-		$this->supports           = array( 'products', 'refunds' );
+		$this->has_fields = true;
+		$this->supports   = array( 'products', 'refunds' );
 
 		$this->init_form_fields();
 		$this->init_settings();
@@ -43,13 +43,13 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 
 	public static function sandbox_test_values(): array {
 		return array(
-			'card' => array(
+			'card'   => array(
 				'4242424242424242' => __( 'Success', 'compound-woocommerce' ),
 				'4000000000000002' => __( 'Invalid card', 'compound-woocommerce' ),
 				'4000000000009995' => __( 'Insufficient funds', 'compound-woocommerce' ),
 				'4000000000000119' => __( 'Retryable processor decline', 'compound-woocommerce' ),
 			),
-			'ach' => array(
+			'ach'    => array(
 				'routing'      => '110000000',
 				'000123456789' => __( 'Success', 'compound-woocommerce' ),
 				'000111111113' => __( 'Insufficient funds', 'compound-woocommerce' ),
@@ -77,7 +77,9 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 	 */
 	public function payment_fields() {
 		if ( $this->description ) {
-			echo wpautop( wp_kses_post( $this->description ) );
+			// kses outermost: wpautop adds markup after sanitising, so escaping has to be
+			// the last thing applied, not the first.
+			echo wp_kses_post( wpautop( $this->description ) );
 		}
 		$methods = $this->methods();
 		echo '<fieldset id="compound-method" style="border:0;padding:0;margin:0;">';
@@ -116,25 +118,25 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 
 	public function init_form_fields() {
 		$this->form_fields = array(
-			'enabled'      => array(
+			'enabled'        => array(
 				'title'   => __( 'Enable/Disable', 'compound-woocommerce' ),
 				'type'    => 'checkbox',
 				'label'   => __( 'Enable Compound', 'compound-woocommerce' ),
 				'default' => 'no',
 			),
-			'title'        => array(
+			'title'          => array(
 				'title'       => __( 'Title', 'compound-woocommerce' ),
 				'type'        => 'text',
 				'description' => __( 'What the customer sees at checkout.', 'compound-woocommerce' ),
 				'default'     => __( 'Secure payment', 'compound-woocommerce' ),
 				'desc_tip'    => true,
 			),
-			'description'  => array(
+			'description'    => array(
 				'title'   => __( 'Description', 'compound-woocommerce' ),
 				'type'    => 'textarea',
 				'default' => __( 'Choose card, bank transfer, or cryptocurrency. Your payment is processed by Compound.', 'compound-woocommerce' ),
 			),
-			'environment'  => array(
+			'environment'    => array(
 				'title'   => __( 'Environment', 'compound-woocommerce' ),
 				'type'    => 'select',
 				'options' => array(
@@ -143,17 +145,17 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 				),
 				'default' => 'sandbox',
 			),
-			'api_key'      => array(
+			'api_key'        => array(
 				'title'       => __( 'Secret API key', 'compound-woocommerce' ),
 				'type'        => 'password',
 				'description' => __( 'A Compound secret key (sk_...) with orders:write and charges:write. Create it in the Compound admin portal (Developers).', 'compound-woocommerce' ),
 			),
-			'orders_url'   => array(
+			'orders_url'     => array(
 				'title'   => __( 'Orders API base URL', 'compound-woocommerce' ),
 				'type'    => 'text',
 				'default' => 'https://api.compound.dev',
 			),
-			'payments_url' => array(
+			'payments_url'   => array(
 				'title'   => __( 'Payments API base URL', 'compound-woocommerce' ),
 				'type'    => 'text',
 				'default' => 'https://api.compound.dev',
@@ -245,8 +247,8 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 		$order->update_meta_data( '_compound_order_id', $compound_order_id );
 
 		// 2) Charge against that order, on the chosen rail. Compound routes across the processors
-		//    that support this method (card -> card processors; ACH -> bank processors;
-		//    crypto -> the crypto gateway).
+		// that support this method (card -> card processors; ACH -> bank processors;
+		// crypto -> the crypto gateway).
 		$charge_attempt = max( 1, (int) $order->get_meta( '_compound_charge_attempt' ) );
 		if ( 'yes' === $order->get_meta( '_compound_charge_retry_ready' ) ) {
 			++$charge_attempt;
@@ -300,14 +302,20 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 	 * payment_method object sent to Compound. Raw sandbox inputs are never persisted.
 	 *
 	 * @return array|WP_Error
+	 *
+	 * @param string $method Rail the shopper chose: card, ach, or crypto.
 	 */
 	private function payment_method( string $method ) {
 		if ( 'sandbox' !== $this->get_option( 'environment' ) ) {
-			// WooCommerce verifies the checkout nonce before process_payment runs.
+			// WooCommerce verifies the checkout nonce before process_payment runs, so this
+			// is not an unauthenticated read. The ignore has to sit on the line that
+			// actually touches $_POST - it applies to the next line only, and the previous
+			// placement left the second access on the ternary's continuation unguarded.
+			// One line on purpose: phpcs:ignore applies to the next line only, and both the
+			// nonce and sanitisation sniffs read the line the access appears on. Splitting
+			// it left one access unguarded and made the sanitiser invisible to the linter.
 			// phpcs:ignore WordPress.Security.NonceVerification.Missing
-			$token = isset( $_POST['compound_payment_token'] )
-				? sanitize_text_field( wp_unslash( $_POST['compound_payment_token'] ) )
-				: '';
+			$token = isset( $_POST['compound_payment_token'] ) ? sanitize_text_field( wp_unslash( $_POST['compound_payment_token'] ) ) : '';
 			if ( '' === $token ) {
 				return new WP_Error( 'compound_payment_token_required', __( 'Connect a payment method before placing the order.', 'compound-woocommerce' ) );
 			}
@@ -364,13 +372,23 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 	/**
 	 * Order attribution as WooCommerce records it (Order Attribution feature): where
 	 * the order came from. Only non-empty values are sent.
+	 *
+	 * @param WC_Order $order Order whose attribution meta is being read.
+	 * @return array Attribution fields, omitting any WooCommerce did not record.
 	 */
 	private function attribution( WC_Order $order ): array {
 		$fields = array(
-			'source_type', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content',
-			'utm_term', 'referrer', 'device_type', 'session_entry',
+			'source_type',
+			'utm_source',
+			'utm_medium',
+			'utm_campaign',
+			'utm_content',
+			'utm_term',
+			'referrer',
+			'device_type',
+			'session_entry',
 		);
-		$out = array();
+		$out    = array();
 		foreach ( $fields as $f ) {
 			$v = $order->get_meta( '_wc_order_attribution_' . $f );
 			if ( '' !== $v && null !== $v ) {
@@ -382,16 +400,19 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 
 	/**
 	 * Minimum-necessary shipping address for fulfillment (PHI destination).
+	 *
+	 * @param WC_Order $order Order whose shipping destination is being sent.
+	 * @return array Shipping address fields required to fulfil the order.
 	 */
 	private function shipping_address( WC_Order $order ): array {
 		return array(
-			'name'   => trim( $order->get_shipping_first_name() . ' ' . $order->get_shipping_last_name() ),
-			'line1'  => $order->get_shipping_address_1(),
-			'line2'  => $order->get_shipping_address_2(),
-			'city'   => $order->get_shipping_city(),
-			'state'  => $order->get_shipping_state(),
-			'zip'    => $order->get_shipping_postcode(),
-			'country'=> $order->get_shipping_country(),
+			'name'    => trim( $order->get_shipping_first_name() . ' ' . $order->get_shipping_last_name() ),
+			'line1'   => $order->get_shipping_address_1(),
+			'line2'   => $order->get_shipping_address_2(),
+			'city'    => $order->get_shipping_city(),
+			'state'   => $order->get_shipping_state(),
+			'zip'     => $order->get_shipping_postcode(),
+			'country' => $order->get_shipping_country(),
 		);
 	}
 }

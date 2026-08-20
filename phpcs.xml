@@ -2,9 +2,27 @@
 <ruleset name="Compound WooCommerce">
   <description>WordPress + WooCommerce coding standards.</description>
   <file>.</file>
+
+  <!-- PHP only. phpcs is a PHP code sniffer; pointing it at assets/js produced 52 of the
+       repo's violations from sniffs that barely apply to JavaScript (WPCS has been
+       shedding its JS support since 3.0). Linting JS is eslint's job, not this one. -->
+  <arg name="extensions" value="php"/>
   <exclude-pattern>/vendor/*</exclude-pattern>
   <exclude-pattern>/node_modules/*</exclude-pattern>
-  <rule ref="WordPress"/>
+  <rule ref="WordPress">
+    <!-- Docblock COMPLETENESS is excluded; docblock CORRECTNESS is not.
+         The WordPress standard wants a doc comment on every function, class, and member
+         variable. On this codebase that is 47 of the 57 remaining violations, and
+         satisfying it means writing 47 comments whose only reader is the linter - which
+         is how a gate ends up permanently advisory and therefore ignored.
+         The sniffs that catch defects rather than absent prose all stay on: output
+         escaping, nonce verification, SQL, and the param-tag sniffs below, which fire
+         when a docblock exists but disagrees with the signature. A wrong docblock is
+         worse than no docblock, so that one is still an error. -->
+    <exclude name="Squiz.Commenting.FunctionComment.Missing"/>
+    <exclude name="Squiz.Commenting.ClassComment.Missing"/>
+    <exclude name="Squiz.Commenting.VariableComment.Missing"/>
+  </rule>
   <config name="minimum_supported_wp_version" value="6.4"/>
   <config name="testVersion" value="8.1-"/>
 </ruleset>

@@ -9,9 +9,9 @@ defined( 'ABSPATH' ) || exit;
 
 class WC_Compound_Compliance {
 
-	private const COA_META_KEY = '_compound_coa_url';
-	private const LOT_META_KEY = '_compound_lot_number';
-	private const LAB_META_KEY = '_compound_lab_name';
+	private const COA_META_KEY      = '_compound_coa_url';
+	private const LOT_META_KEY      = '_compound_lot_number';
+	private const LAB_META_KEY      = '_compound_lab_name';
 	private const COA_DATE_META_KEY = '_compound_coa_date';
 	private const ANALYSIS_META_KEY = '_compound_analysis_type';
 
@@ -51,6 +51,9 @@ class WC_Compound_Compliance {
 
 	/**
 	 * Give the shop archive a specific, scientific heading.
+	 *
+	 * @param string $title Heading WooCommerce would otherwise render.
+	 * @return string Replacement heading.
 	 */
 	public function filter_catalog_title( string $title ): string {
 		return is_shop() ? __( 'Research compounds', 'compound-woocommerce' ) : $title;
@@ -237,7 +240,7 @@ class WC_Compound_Compliance {
 	 */
 	public function render_footer_navigation(): void {
 		$groups = array(
-			__( 'Support', 'compound-woocommerce' ) => array(
+			__( 'Support', 'compound-woocommerce' )  => array(
 				'certificates' => __( 'Certificates', 'compound-woocommerce' ),
 				'contact'      => __( 'Contact', 'compound-woocommerce' ),
 			),
@@ -306,10 +309,10 @@ class WC_Compound_Compliance {
 				'<tr data-certificate-row><th scope="row"><a href="%1$s">%2$s</a></th><td>%3$s</td><td>%4$s</td><td>%5$s</td><td>%6$s</td><td>%7$s</td></tr>',
 				esc_url( $product->get_permalink() ),
 				esc_html( $product->get_name() ),
-				esc_html( $lot ?: __( 'Not listed', 'compound-woocommerce' ) ),
-				esc_html( $lab ?: __( 'Not listed', 'compound-woocommerce' ) ),
-				esc_html( $analysis ?: __( 'Analytical report', 'compound-woocommerce' ) ),
-				esc_html( $date ?: __( 'Not listed', 'compound-woocommerce' ) ),
+				esc_html( $lot ? $lot : __( 'Not listed', 'compound-woocommerce' ) ),
+				esc_html( $lab ? $lab : __( 'Not listed', 'compound-woocommerce' ) ),
+				esc_html( $analysis ? $analysis : __( 'Analytical report', 'compound-woocommerce' ) ),
+				esc_html( $date ? $date : __( 'Not listed', 'compound-woocommerce' ) ),
 				$document
 			);
 		}
