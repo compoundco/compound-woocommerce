@@ -105,11 +105,10 @@ class WC_Compound_API {
 	 * POST JSON with the brand API key. Returns the decoded body, or a WP_Error whose
 	 * message is the Compound error envelope's message when present.
 	 *
-	 * @return array|WP_Error
-	 *
 	 * @param string $url Absolute endpoint URL.
 	 * @param array  $body Request payload, JSON-encoded before sending.
 	 * @param string $idempotency_key Stable key so a retry cannot double-charge.
+	 * @return array|WP_Error
 	 */
 	private function post( string $url, array $body, string $idempotency_key ) {
 		$response = wp_remote_post(
