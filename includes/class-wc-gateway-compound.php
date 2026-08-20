@@ -301,10 +301,8 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 	 * Convert sandbox test values (or a future live hosted-field token) into the opaque
 	 * payment_method object sent to Compound. Raw sandbox inputs are never persisted.
 	 *
-	 * @return array|WP_Error
-	 *
 	 * @param string $method Rail the shopper chose: card, ach, or crypto.
-	 */
+	 * @return array|WP_Error
 	private function payment_method( string $method ) {
 		if ( 'sandbox' !== $this->get_option( 'environment' ) ) {
 			// WooCommerce verifies the checkout nonce before process_payment runs, so this
