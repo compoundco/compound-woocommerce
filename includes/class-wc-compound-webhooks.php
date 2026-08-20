@@ -49,7 +49,13 @@ class WC_Compound_Webhooks {
 		$order    = $order_id ? $this->find_order( $order_id ) : null;
 		if ( ! $order ) {
 			// Ack so Compound doesn't retry an event for an order we don't have.
-			return new WP_REST_Response( array( 'applied' => false, 'reason' => 'order not found' ), 200 );
+			return new WP_REST_Response(
+				array(
+					'applied' => false,
+					'reason'  => 'order not found',
+				),
+				200
+			);
 		}
 
 		// Map Compound fulfillment events onto native WooCommerce statuses + notes. Compound
@@ -91,7 +97,13 @@ class WC_Compound_Webhooks {
 				break;
 			default:
 				// Tolerate unknown / non-fulfillment event types (additive-only evolution).
-				return new WP_REST_Response( array( 'applied' => false, 'reason' => 'ignored' ), 200 );
+				return new WP_REST_Response(
+					array(
+						'applied' => false,
+						'reason'  => 'ignored',
+					),
+					200
+				);
 		}
 
 		return new WP_REST_Response( array( 'applied' => true ), 200 );
@@ -112,12 +124,20 @@ class WC_Compound_Webhooks {
 
 	/**
 	 * Find the WooCommerce order carrying this Compound order id (HPOS-safe).
+	 *
+	 * @param string $compound_order_id Compound's order id, stored on the order as meta.
+	 * @return WC_Order|null The matching order, or null when none carries that id.
 	 */
 	private function find_order( string $compound_order_id ): ?WC_Order {
+		// meta_key/meta_value is the supported way to look an order up by a foreign id in
+		// WooCommerce, and _compound_order_id is unique per order, so this returns one row
+		// rather than scanning. The sniff warns about unindexed meta at scale; accepted.
 		$orders = wc_get_orders(
 			array(
 				'limit'      => 1,
+				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
 				'meta_key'   => '_compound_order_id',
+				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
 				'meta_value' => $compound_order_id,
 			)
 		);
