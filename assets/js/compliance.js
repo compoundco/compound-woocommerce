@@ -15,8 +15,10 @@
 
 				certificateRows.forEach(
 					function ( row ) {
+						var matches = ! query || row.textContent.toLocaleLowerCase().indexOf( query ) !== -1;
+						row.hidden  = ! matches;
 						if ( matches ) {
-							visibleCount += 1;
+								visibleCount += 1;
 						}
 					}
 				);
