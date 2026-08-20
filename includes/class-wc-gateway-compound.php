@@ -303,15 +303,14 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 	 *
 	 * @param string $method Rail the shopper chose: card, ach, or crypto.
 	 * @return array|WP_Error
+	 */
 	private function payment_method( string $method ) {
 		if ( 'sandbox' !== $this->get_option( 'environment' ) ) {
 			// WooCommerce verifies the checkout nonce before process_payment runs, so this
-			// is not an unauthenticated read. The ignore has to sit on the line that
-			// actually touches $_POST - it applies to the next line only, and the previous
-			// placement left the second access on the ternary's continuation unguarded.
-			// One line on purpose: phpcs:ignore applies to the next line only, and both the
-			// nonce and sanitisation sniffs read the line the access appears on. Splitting
-			// it left one access unguarded and made the sanitiser invisible to the linter.
+			// is not an unauthenticated read. Kept on one line because phpcs:ignore applies
+			// to the next line only, and both the nonce and sanitisation sniffs read the
+			// line the access appears on - splitting it leaves an access unguarded and
+			// hides the sanitiser from the linter.
 			// phpcs:ignore WordPress.Security.NonceVerification.Missing
 			$token = isset( $_POST['compound_payment_token'] ) ? sanitize_text_field( wp_unslash( $_POST['compound_payment_token'] ) ) : '';
 			if ( '' === $token ) {
