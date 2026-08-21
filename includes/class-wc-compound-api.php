@@ -81,7 +81,8 @@ class WC_Compound_API {
 	 * @param string $order_id        Compound order id.
 	 * @param int    $amount_cents    Amount in cents (must match the order).
 	 * @param string $idempotency_key Stable per-charge key.
-	 * @param array  $payment_method Opaque, tokenized funding-source data.
+	 * @param string $method_type     Rail the shopper chose: card, ach, or crypto.
+	 * @param array  $payment_method  Opaque, tokenized funding-source data.
 	 * @return array|WP_Error Decoded charge on success.
 	 */
 	public function create_charge( string $order_id, int $amount_cents, string $idempotency_key, string $method_type = 'card', array $payment_method = array() ) {
@@ -104,6 +105,9 @@ class WC_Compound_API {
 	 * POST JSON with the brand API key. Returns the decoded body, or a WP_Error whose
 	 * message is the Compound error envelope's message when present.
 	 *
+	 * @param string $url Absolute endpoint URL.
+	 * @param array  $body Request payload, JSON-encoded before sending.
+	 * @param string $idempotency_key Stable key so a retry cannot double-charge.
 	 * @return array|WP_Error
 	 */
 	private function post( string $url, array $body, string $idempotency_key ) {
