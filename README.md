@@ -100,6 +100,13 @@ Checkout resolves against the Compound catalog seeded in step 1, so run that fir
 Prefer the standard tool and your network can reach getcomposer.org? `npm install && npx wp-env
 start` also leaves a store at http://localhost:8888, then run `make seed`.
 
+**Testing a change on any WooCommerce site before pushing**: `make build` packages the current
+working tree - uncommitted changes included - into `.build/compound-woocommerce.zip`, the exact
+same layout the release workflow and chefspeps' terraform deploy package. Upload it in wp-admin
+(Plugins -> Add New -> Upload Plugin; WordPress offers to replace an existing install of the same
+plugin) on any test site, including one outside this repo, to try a change live before committing
+it.
+
 Now shop at http://localhost:8888 and check out with "Card (Compound)", or run the headless check:
 
 ```
