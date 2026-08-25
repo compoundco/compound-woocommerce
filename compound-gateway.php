@@ -3,7 +3,7 @@
  * Plugin Name:       Compound for WooCommerce
  * Plugin URI:        https://compound.dev
  * Description:       Route WooCommerce checkout and orders through Compound - payments orchestration + pharmacy fulfillment for DTC peptide brands.
- * Version:           0.1.5
+ * Version:           0.1.6
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            Compound
@@ -16,7 +16,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'COMPOUND_WC_VERSION', '0.1.5' );
+define( 'COMPOUND_WC_VERSION', '0.1.6' );
 define( 'COMPOUND_WC_FILE', __FILE__ );
 define( 'COMPOUND_WC_PATH', plugin_dir_path( __FILE__ ) );
 
@@ -39,7 +39,6 @@ add_action(
 		}
 
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-api.php';
-		require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-compliance.php';
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gateway-compound.php';
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-webhooks.php';
 
@@ -59,7 +58,17 @@ add_action(
 
 		// Inbound webhooks from Compound (order status updates).
 		( new WC_Compound_Webhooks() )->register();
-		( new WC_Compound_Compliance() )->register();
+
+		// Compound's restricted-product storefront compliance controls (age gate,
+		// account-only checkout, mandatory COAs, disabled reviews - see COMPLIANCE.md).
+		// This is the chefspeps.com reference storefront's own regulatory posture, not a
+		// general requirement imposed on every merchant who installs this plugin - off by
+		// default. A deployment that needs it opts in via wp-config.php:
+		//   define( 'COMPOUND_WC_ENABLE_COMPLIANCE', true );
+		if ( defined( 'COMPOUND_WC_ENABLE_COMPLIANCE' ) && COMPOUND_WC_ENABLE_COMPLIANCE ) {
+			require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-compliance.php';
+			( new WC_Compound_Compliance() )->register();
+		}
 
 		// Register the gateway with the Cart/Checkout blocks (classic gateways are otherwise
 		// invisible there - the checkout shows "no payment methods available").
