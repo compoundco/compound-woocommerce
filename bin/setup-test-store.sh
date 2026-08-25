@@ -144,7 +144,6 @@ create_page() {
 }
 terms_id="$(create_page "Terms & Conditions" "terms-and-conditions" "Customers must be 21 or older and maintain an account. Products are presented with scientific information only. By ordering, the customer accepts these terms and all posted store policies.")"
 privacy_id="$(create_page "Privacy Policy" "privacy-policy" "We collect account, contact, shipping, and transaction information needed to operate the store, fulfill orders, prevent fraud, and meet legal obligations. Contact privacy@example.com for privacy requests.")"
-create_page "Certificates" "certificates" "[compound_certificates]" >/dev/null
 create_page "Shipping Policy" "shipping-policy" "Orders are processed after payment and compliance review. Available destinations, carriers, delivery estimates, and any temperature-control requirements are shown during fulfillment. Delays may occur and delivery dates are not guaranteed." >/dev/null
 create_page "Refunds & Returns Policy" "refunds-and-returns" "Contact support@example.com before requesting a return. Eligibility depends on product condition, chain of custody, applicable law, and fulfillment status. Approved refunds return to the original payment method." >/dev/null
 create_page "Chargeback Policy" "chargeback-policy" "Contact support@example.com or +1 (555) 010-2026 first so we can investigate billing or fulfillment concerns. Fraudulent or abusive disputes may be contested using order and delivery records." >/dev/null

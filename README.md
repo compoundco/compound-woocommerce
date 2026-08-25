@@ -7,10 +7,14 @@ Compound TS/Go monorepo.
 
 ## What it does
 
-The plugin also includes merchant storefront controls for Compound's restricted-product compliance
-program: a 21+ age gate, account-only checkout, WooCommerce terms acceptance, per-product COA links,
-required product-data checks, disabled product reviews, and footer card marks. See
-[`COMPLIANCE.md`](COMPLIANCE.md) for the technical controls and merchant evidence checklist.
+The plugin also carries (off by default) merchant storefront controls for a restricted-product
+compliance program: a 21+ age gate, account-only checkout, WooCommerce terms acceptance,
+per-product COA links, required product-data checks, disabled product reviews, and footer card
+marks. This is chefspeps.com's own regulatory posture as Compound's reference storefront, not
+something imposed on every merchant who installs this plugin - it activates only when a
+deployment defines `COMPOUND_WC_ENABLE_COMPLIANCE` in `wp-config.php` (chefspeps.com's terraform
+does this; a general install never does). See [`COMPLIANCE.md`](COMPLIANCE.md) for the technical
+controls and merchant evidence checklist.
 
 At checkout, on Place Order, the gateway:
 

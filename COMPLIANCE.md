@@ -1,17 +1,32 @@
 # Merchant storefront compliance SOP
 
-The plugin enforces the storefront controls that can be implemented technically. This document is
-an operating checklist, not legal advice. The merchant remains responsible for reviewing every live
-page, product, document, jurisdiction, and processor requirement before accepting orders.
+**Scope: this SOP governs the chefspeps.com reference storefront specifically, not every
+merchant who installs this plugin.** The compliance controls it describes (`class-wc-compound-
+compliance.php`) are off by default in the plugin - the general download a third-party
+merchant gets from GitHub Releases never loads them. chefspeps.com opts in explicitly
+(`terraform/templates/provision.sh.tftpl` sets `COMPOUND_WC_ENABLE_COMPLIANCE` in
+wp-config.php) because it is Compound's own reference storefront for a regulated product
+category and carries its own regulatory posture; that is not a general requirement this
+plugin imposes on every installation. A different merchant's compliance posture is their
+own to configure, with their own counsel - this plugin does not decide it for them.
+
+The plugin enforces the storefront controls that can be implemented technically, for
+deployments that opt in. This document is an operating checklist, not legal advice. The
+merchant remains responsible for reviewing every live page, product, document, jurisdiction,
+and processor requirement before accepting orders.
 
 ## Scope and change control
 
-This SOP applies to every storefront-affecting change in this repository, including PHP, JavaScript,
-CSS, templates, seed scripts, product fixtures, documentation, checkout behavior, marketing copy,
-metadata, structured data, and generated demo content.
+This SOP applies to every change touching `class-wc-compound-compliance.php`, its assets, and
+chefspeps.com's own terraform/provisioning - PHP, JavaScript, CSS, templates, seed scripts,
+product fixtures, documentation, checkout behavior, marketing copy, metadata, structured data,
+and generated demo content, wherever chefspeps.com is the deployment in question. It does not
+apply to the general plugin's gateway/webhook code, which never loads this module.
 
-- Treat every requirement in this document as a release-blocking invariant.
-- Do not remove, bypass, hide, weaken, or make optional any required control.
+- Treat every requirement in this document as release-blocking **for chefspeps.com**.
+- Do not remove, bypass, hide, or weaken any required control on chefspeps.com, and do not
+  make `COMPOUND_WC_ENABLE_COMPLIANCE` conditional or configurable there - it opts in
+  unconditionally in `terraform/templates/provision.sh.tftpl`.
 - Do not introduce noncompliant sample text even when it is marked as test or demo content.
 - Do not infer that a processor, gateway, theme, or WooCommerce update replaces these controls.
 - If a requested change conflicts with this SOP, stop and clearly identify the conflict before
