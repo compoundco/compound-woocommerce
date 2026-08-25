@@ -39,6 +39,10 @@ dev: ## Bring up + provision the WordPress + WooCommerce demo store (:8888)
 seed: ## Seed the store: products + theme + gateway + webhook endpoint (needs the compound repo seeded)
 	bash bin/setup-test-store.sh
 
+.PHONY: build
+build: ## Build compound-woocommerce.zip from the current working tree (.build/), to test before pushing
+	bash bin/build-zip.sh
+
 .PHONY: sim-shipped sim-delivered sim-exception
 sim-shipped: ## Simulate the pharmacy shipping an order (ORDER=<compound_order_id>)
 	bash bin/sim-fulfillment.sh shipped $(ORDER)
