@@ -3,7 +3,7 @@
  * Plugin Name:       Compound for WooCommerce
  * Plugin URI:        https://compound.dev
  * Description:       Route WooCommerce checkout and orders through Compound - payments orchestration + pharmacy fulfillment for DTC peptide brands.
- * Version:           0.1.6
+ * Version:           0.1.7
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            Compound
@@ -16,7 +16,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'COMPOUND_WC_VERSION', '0.1.6' );
+define( 'COMPOUND_WC_VERSION', '0.1.7' );
 define( 'COMPOUND_WC_FILE', __FILE__ );
 define( 'COMPOUND_WC_PATH', plugin_dir_path( __FILE__ ) );
 
