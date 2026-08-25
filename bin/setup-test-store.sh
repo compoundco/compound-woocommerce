@@ -15,6 +15,18 @@
 # products (SKUs matched to the Compound catalog), applies the Storefront theme +
 # branding, and points the gateway at your local services. Override any
 # URL/credential via the COMPOUND_* / GW_* env vars below.
+#
+# The gateway only ever configures ONE API base (Orders and Payments are one public
+# host, routed by path, in every real deployment). Locally, the raw compound monorepo
+# stack runs them on different ports (orders :4003, payments :4005) with nothing
+# unifying them - so GW_API_BASE below defaults to the orders port, which means a
+# full local checkout (needs a real charge, not just order creation) will fail against
+# a plain local stack. For a real end-to-end test, override BOTH GW_API_BASE and
+# COMPOUND_API_KEY together to point at a deployed environment instead, e.g.:
+#   GW_API_BASE=https://stg.api.thepeptides.company COMPOUND_API_KEY=sk_sandbox_... \
+#     bin/setup-test-store.sh
+# (Mint that key via the admin portal - Developers - since staging's identity service
+# isn't reachable directly the way local dev's is.)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -23,9 +35,8 @@ IDENTITY_URL="${COMPOUND_IDENTITY_URL:-http://localhost:4001}"
 ORDERS_URL="${COMPOUND_ORDERS_URL:-http://localhost:4003}"
 DEMO_EMAIL="${COMPOUND_DEMO_EMAIL:-demo@acmepeptides.com}"
 DEMO_PASS="${COMPOUND_DEMO_PASS:-compound-demo-2026}"
-# URLs the WordPress container uses to reach the host services:
-GW_ORDERS_URL="${GW_ORDERS_URL:-http://host.docker.internal:4003}"
-GW_PAYMENTS_URL="${GW_PAYMENTS_URL:-http://host.docker.internal:4005}"
+# The URL the WordPress container uses to reach Compound's API - see the note above.
+GW_API_BASE="${GW_API_BASE:-http://host.docker.internal:4003}"
 # The store's webhook URL as Compound's outbound worker (on the host) reaches it:
 STORE_WEBHOOK_URL="${COMPOUND_STORE_WEBHOOK_URL:-http://localhost:8888/wp-json/compound/v1/webhook}"
 WEBHOOK_SECRET="${COMPOUND_WEBHOOK_SECRET:-dev-webhook-secret}"
@@ -76,21 +87,24 @@ if [ -z "$BRAND" ]; then
   exit 1
 fi
 KEY="${COMPOUND_API_KEY:-$(curl -s -X POST "$IDENTITY_URL/v1/brands/$BRAND/apikeys" -H 'Content-Type: application/json' \
-  -d '{"name":"woo-test-store","environment":"sandbox","scopes":["orders:write","charges:write","orders:read"]}' \
+  -d '{"name":"woo-test-store","environment":"sandbox","scopes":["orders:write","charges:write","orders:read","webhooks:manage"]}' \
   | python3 -c 'import sys,json;print(json.load(sys.stdin)["key"])')}"
 echo "    brand=$BRAND  key=${KEY:0:16}..."
 
 echo "==> Compound: register the outbound webhook endpoint -> this store"
 # Compound's outbound worker (on the host) delivers order.* here as fulfillment progresses.
 # Deactivate any prior endpoints (re-runs) so exactly one is active, then register a fresh one
-# and use its signing secret for the gateway - so signatures match.
+# and use its signing secret for the gateway - so signatures match. These routes require a
+# key with webhooks:manage (they used to be unauthenticated - a real vulnerability, fixed
+# server-side; $KEY must carry that scope, which the minting call above now requests).
 for id in $(curl -s "$ORDERS_URL/v1/brands/$BRAND/webhook_endpoints" \
+  -H "Authorization: Bearer $KEY" \
   | python3 -c 'import sys,json;[print(e["id"]) for e in json.load(sys.stdin).get("endpoints",[])]' 2>/dev/null); do
   curl -s -X PATCH "$ORDERS_URL/v1/brands/$BRAND/webhook_endpoints/$id" \
-    -H 'Content-Type: application/json' -d '{"active":false}' >/dev/null 2>&1 || true
+    -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' -d '{"active":false}' >/dev/null 2>&1 || true
 done
 EP="$(curl -s -X POST "$ORDERS_URL/v1/brands/$BRAND/webhook_endpoints" \
-  -H 'Content-Type: application/json' -d "{\"url\":\"$STORE_WEBHOOK_URL\"}")"
+  -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' -d "{\"url\":\"$STORE_WEBHOOK_URL\"}")"
 EP_SECRET="$(printf '%s' "$EP" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("endpoint",{}).get("secret",""))' 2>/dev/null || true)"
 if [ -n "$EP_SECRET" ]; then
   WEBHOOK_SECRET="$EP_SECRET"
@@ -159,7 +173,7 @@ wp option update woocommerce_enable_signup_and_login_from_checkout yes >/dev/nul
 
 echo "==> WooCommerce: enable + configure the Compound gateway"
 wp option update woocommerce_compound_settings \
-  "{\"enabled\":\"yes\",\"title\":\"Card (Compound)\",\"description\":\"Test checkout via the Compound sandbox.\",\"environment\":\"sandbox\",\"api_key\":\"$KEY\",\"orders_url\":\"$GW_ORDERS_URL\",\"payments_url\":\"$GW_PAYMENTS_URL\",\"webhook_secret\":\"$WEBHOOK_SECRET\"}" \
+  "{\"enabled\":\"yes\",\"title\":\"Card (Compound)\",\"description\":\"Test checkout via the Compound sandbox.\",\"environment\":\"sandbox\",\"api_key\":\"$KEY\",\"api_base\":\"$GW_API_BASE\",\"webhook_secret\":\"$WEBHOOK_SECRET\",\"enable_card\":\"yes\",\"enable_ach\":\"yes\",\"enable_crypto\":\"yes\"}" \
   --format=json >/dev/null 2>&1
 wp compound sync_coupons >/dev/null 2>&1 || true
 wp cache flush >/dev/null 2>&1 || true

@@ -133,9 +133,14 @@ print(json.dumps({
     "description": "Test checkout via the Compound ${compound_environment}.",
     "environment": "${compound_environment}",
     "api_key": key if configured else "",
-    "orders_url": "${orders_url}",
-    "payments_url": "${payments_url}",
+    # Orders and Payments are one public host, routed by path - orders_url and
+    # payments_url below are always set to the same value; api_base is the one the
+    # gateway actually reads (see WC_Gateway_Compound::migrate_legacy_settings).
+    "api_base": "${orders_url}",
     "webhook_secret": os.environ.get("COMPOUND_WEBHOOK_SECRET", ""),
+    "enable_card": "yes",
+    "enable_ach": "yes",
+    "enable_crypto": "yes",
 }))
 PY
 )"

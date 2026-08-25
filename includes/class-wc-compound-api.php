@@ -1,7 +1,9 @@
 <?php
 /**
- * HTTP client for the Compound external API (Orders + Payments). Server-side only;
- * the brand's secret API key never reaches the browser.
+ * HTTP client for the Compound external API (Orders + Payments). One public host routes
+ * to both services by path (/v1/orders*, /v1/coupons* -> Orders; /v1/charges* -> Payments) -
+ * this client never needs, and never takes, two different hosts. Server-side only; the
+ * brand's secret API key never reaches the browser.
  *
  * @package Compound\WooCommerce
  */
@@ -10,14 +12,12 @@ defined( 'ABSPATH' ) || exit;
 
 class WC_Compound_API {
 
-	private string $orders_url;
-	private string $payments_url;
+	private string $api_base;
 	private string $api_key;
 
-	public function __construct( string $orders_url, string $payments_url, string $api_key ) {
-		$this->orders_url   = untrailingslashit( $orders_url );
-		$this->payments_url = untrailingslashit( $payments_url );
-		$this->api_key      = $api_key;
+	public function __construct( string $api_base, string $api_key ) {
+		$this->api_base = untrailingslashit( $api_base );
+		$this->api_key  = $api_key;
 	}
 
 	/**
@@ -47,7 +47,7 @@ class WC_Compound_API {
 			'coupon_code'      => $meta['coupon_code'] ?? '',
 			'discount_cents'   => $meta['discount_cents'] ?? 0,
 		);
-		return $this->post( $this->orders_url . '/v1/orders', $body, $idempotency_key );
+		return $this->post( $this->api_base . '/v1/orders', $body, $idempotency_key );
 	}
 
 	/**
@@ -57,7 +57,7 @@ class WC_Compound_API {
 	 */
 	public function get_coupons() {
 		$response = wp_remote_get(
-			$this->orders_url . '/v1/coupons',
+			$this->api_base . '/v1/coupons',
 			array(
 				'timeout' => 15,
 				'headers' => array( 'Authorization' => 'Bearer ' . $this->api_key ),
@@ -95,7 +95,7 @@ class WC_Compound_API {
 			$body['payment_method'] = $payment_method;
 		}
 		return $this->post(
-			$this->payments_url . '/v1/charges',
+			$this->api_base . '/v1/charges',
 			$body,
 			$idempotency_key
 		);

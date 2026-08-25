@@ -22,11 +22,11 @@ class WC_Compound_CLI {
 	 */
 	public function sync_coupons( $args, $assoc_args ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter
 		$settings = get_option( 'woocommerce_compound_settings', array() );
-		$api      = new WC_Compound_API(
-			$settings['orders_url'] ?? '',
-			$settings['payments_url'] ?? '',
-			$settings['api_key'] ?? ''
-		);
+		// Falls back to the pre-migration keys directly (rather than relying on the gateway's
+		// own migrate_legacy_settings() having already run) since a CLI command can execute
+		// before WooCommerce has ever instantiated WC_Gateway_Compound this request.
+		$api_base = $settings['api_base'] ?? ( $settings['orders_url'] ?? ( $settings['payments_url'] ?? '' ) );
+		$api      = new WC_Compound_API( $api_base, $settings['api_key'] ?? '' );
 
 		$coupons = $api->get_coupons();
 		if ( is_wp_error( $coupons ) ) {

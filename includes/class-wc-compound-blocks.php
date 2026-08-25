@@ -22,11 +22,15 @@ class WC_Compound_Blocks extends AbstractPaymentMethodType {
 	}
 
 	/**
-	 * Only offer Compound in the block checkout when the gateway is enabled - matches the
-	 * classic checkout's availability.
+	 * Only offer Compound in the block checkout when the gateway is enabled and at least one
+	 * payment rail is toggled on - matches the classic checkout's availability
+	 * (WC_Gateway_Compound::is_available()).
 	 */
 	public function is_active(): bool {
-		return isset( $this->settings['enabled'] ) && 'yes' === $this->settings['enabled'];
+		if ( ! isset( $this->settings['enabled'] ) || 'yes' !== $this->settings['enabled'] ) {
+			return false;
+		}
+		return ! empty( WC_Gateway_Compound::enabled_methods( $this->settings ) );
 	}
 
 	/**
@@ -53,7 +57,7 @@ class WC_Compound_Blocks extends AbstractPaymentMethodType {
 		return array(
 			'title'       => (string) ( $this->settings['title'] ?? __( 'Compound', 'compound-woocommerce' ) ),
 			'description' => (string) ( $this->settings['description'] ?? '' ),
-			'methods'     => WC_Gateway_Compound::method_labels(),
+			'methods'     => WC_Gateway_Compound::enabled_methods( $this->settings ),
 			'sandbox'     => 'sandbox' === ( $this->settings['environment'] ?? 'sandbox' ),
 			'testValues'  => WC_Gateway_Compound::sandbox_test_values(),
 			'supports'    => array( 'products', 'refunds' ),
