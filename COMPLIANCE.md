@@ -77,6 +77,12 @@ The compliance layer must fail closed where practical:
 - Compliance controls must remain usable on mobile devices and accessible by keyboard.
 - Styling changes must not visually obscure required notices, checkboxes, COA links, policy links,
   contact details, card marks, or the age gate.
+- The compliance layer's CSS (`assets/css/compliance.css`) sets structural layout only (spacing,
+  sizing, flex/grid) for its own `compound-*` elements - never a color, font-family, or override
+  of an existing theme element (headings, links, buttons, the product grid, form fields, the
+  site header/footer). It inherits the active theme's look; it does not impose one. The single
+  exception is the age-gate's full-page backdrop, which needs an explicit neutral (black/white,
+  never a brand color) scrim to function as a blocking overlay.
 
 ## Enforced by the plugin
 
