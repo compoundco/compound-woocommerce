@@ -1,0 +1,59 @@
+# Builds the installable plugin zip and publishes it as a GitHub Release asset. This is
+# the plugin's distribution point (the admin portal's "Install the WooCommerce plugin"
+# instructions link here) until/unless it's listed on the WordPress.org Plugin Directory.
+#
+# Tag main (or stage, once merged there) with vX.Y.Z to trigger a release:
+#   git tag v0.1.6 && git push origin v0.1.6
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The tag is the source of truth for what version ships. A mismatch with the
+      # plugin's own header (what WordPress reads for the installed version) would be a
+      # support headache nobody would notice until an update check misbehaved - refuse
+      # the release instead.
+      - name: Verify the tag matches the plugin version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          header="$(grep -oP '^\s*\*\s*Version:\s*\K[0-9][0-9A-Za-z.-]*' compound-gateway.php)"
+          defined="$(grep -oP "define\(\s*'COMPOUND_WC_VERSION',\s*'\K[0-9][0-9A-Za-z.-]*" compound-gateway.php)"
+          if [ "$tag" != "$header" ] || [ "$tag" != "$defined" ]; then
+            echo "::error::Tag v$tag does not match compound-gateway.php (header: $header, COMPOUND_WC_VERSION: $defined)."
+            exit 1
+          fi
+
+      # Only what WordPress actually needs installed: the main plugin file, includes/,
+      # assets/. No vendor/ (composer's require-dev tools are lint-only, nothing runtime
+      # autoloads), no tests, docs, or CI config.
+      - name: Build the plugin zip
+        run: |
+          set -euo pipefail
+          mkdir -p build/compound-woocommerce
+          cp compound-gateway.php build/compound-woocommerce/
+          cp -R includes build/compound-woocommerce/
+          cp -R assets build/compound-woocommerce/
+          (cd build && zip -r -q ../compound-woocommerce.zip compound-woocommerce)
+
+      # A fixed asset name (not versioned in the filename) so the admin portal can link
+      # to .../releases/latest/download/compound-woocommerce.zip and always get the
+      # current version, with no link to update on every release.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" compound-woocommerce.zip \
+            --title "${{ github.ref_name }}" \
+            --generate-notes
