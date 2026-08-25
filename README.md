@@ -152,9 +152,10 @@ make aws-creds                       # admin password + webhook signing secret
 make aws-deploy                      # push a plugin change to the running store
 ```
 
-The one thing that does not carry over from local: the gateway's Orders/Payments URLs.
+The one thing that does not carry over from local: the gateway's API base URL.
 `host.docker.internal:4003` doesn't resolve from AWS, so point `compound_orders_url` /
-`compound_payments_url` at a deployed Compound stack or a tunnel to your machine. Details
+`compound_payments_url` (both set to the same value - Orders and Payments are one public
+host, routed by path) at a deployed Compound stack or a tunnel to your machine. Details
 and the full resource list are in [terraform/README.md](terraform/README.md).
 
 ## Settings (WooCommerce -> Settings -> Payments -> Compound)
@@ -163,8 +164,9 @@ and the full resource list are in [terraform/README.md](terraform/README.md).
 |---|---|
 | Environment | `sandbox` (test, no real money) or `live` |
 | Secret API key | `sk_...` with `orders:write` + `charges:write` |
-| Orders / Payments API base URL | Compound API (local: the two service URLs) |
+| API base URL | Compound's public API - one host, routed to both Orders and Payments by path (default: `https://api.thepeptides.company`) |
 | Webhook signing secret | verifies inbound Compound webhooks |
+| Payment methods | toggle card / bank transfer (ACH) / cryptocurrency independently; the gateway is unavailable at checkout if every method is off |
 
 ## Development
 

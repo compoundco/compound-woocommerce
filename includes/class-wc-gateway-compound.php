@@ -21,6 +21,7 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 
 		$this->init_form_fields();
 		$this->init_settings();
+		$this->migrate_legacy_settings();
 
 		$this->title       = $this->get_option( 'title' );
 		$this->description = $this->get_option( 'description' );
@@ -29,7 +30,26 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 	}
 
 	/**
-	 * The payment methods (rails) the shopper can choose, keyed by the method_type sent to
+	 * One-time migration for installs saved before Orders/Payments URLs were combined into a
+	 * single API base (they were always the same host - Compound's public API routes to both
+	 * services by path, not by host). Runs on every load but only writes once `api_base` is
+	 * missing; self-healing, no separate activation hook needed.
+	 */
+	private function migrate_legacy_settings(): void {
+		if ( ! empty( $this->settings['api_base'] ) ) {
+			return;
+		}
+		$legacy = $this->settings['orders_url'] ?? ( $this->settings['payments_url'] ?? '' );
+		if ( ! $legacy ) {
+			return;
+		}
+		$this->settings['api_base'] = $legacy;
+		unset( $this->settings['orders_url'], $this->settings['payments_url'] );
+		update_option( $this->get_option_key(), $this->settings );
+	}
+
+	/**
+	 * The payment methods (rails) a shopper could choose, keyed by the method_type sent to
 	 * Compound. Single source of truth so the classic checkout (payment_fields) and the block
 	 * checkout (WC_Compound_Blocks) offer exactly the same rails - they must never drift.
 	 */
@@ -38,6 +58,25 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 			'card'   => __( 'Card', 'compound-woocommerce' ),
 			'ach'    => __( 'Bank transfer (ACH)', 'compound-woocommerce' ),
 			'crypto' => __( 'Cryptocurrency', 'compound-woocommerce' ),
+		);
+	}
+
+	/**
+	 * The rails from method_labels() filtered down to whichever this merchant has toggled on
+	 * (WooCommerce -> Settings -> Payments -> Compound). Missing enable_* keys default to "yes"
+	 * (on) so installs saved before this setting existed keep every rail they had before.
+	 *
+	 * @param array $settings Raw gateway settings (either $this->settings, or the same option
+	 *                        read directly - the block checkout reads it without an instance).
+	 * @return array
+	 */
+	public static function enabled_methods( array $settings ): array {
+		return array_filter(
+			self::method_labels(),
+			function ( $method ) use ( $settings ) {
+				return 'no' !== ( $settings[ "enable_{$method}" ] ?? 'yes' );
+			},
+			ARRAY_FILTER_USE_KEY
 		);
 	}
 
@@ -69,7 +108,15 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 	 * method_type, which selects the eligible processors the routing engine chooses among.
 	 */
 	private function methods(): array {
-		return self::method_labels();
+		return self::enabled_methods( $this->settings );
+	}
+
+	/**
+	 * Never offer Compound at checkout with zero rails enabled - toggling every method off is
+	 * equivalent to disabling the gateway, not an empty chooser.
+	 */
+	public function is_available(): bool {
+		return parent::is_available() && ! empty( $this->methods() );
 	}
 
 	/**
@@ -150,28 +197,40 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 				'type'        => 'password',
 				'description' => __( 'A Compound secret key (sk_...) with orders:write and charges:write. Create it in the Compound admin portal (Developers).', 'compound-woocommerce' ),
 			),
-			'orders_url'     => array(
-				'title'   => __( 'Orders API base URL', 'compound-woocommerce' ),
-				'type'    => 'text',
-				'default' => 'https://api.compound.dev',
-			),
-			'payments_url'   => array(
-				'title'   => __( 'Payments API base URL', 'compound-woocommerce' ),
-				'type'    => 'text',
-				'default' => 'https://api.compound.dev',
+			'api_base'       => array(
+				'title'       => __( 'API base URL', 'compound-woocommerce' ),
+				'type'        => 'text',
+				'description' => __( 'Compound\'s public API - one host, routing to both Orders and Payments by path.', 'compound-woocommerce' ),
+				'default'     => 'https://api.thepeptides.company',
+				'desc_tip'    => true,
 			),
 			'webhook_secret' => array(
 				'title'       => __( 'Webhook signing secret', 'compound-woocommerce' ),
 				'type'        => 'password',
 				'description' => __( 'Verifies inbound Compound webhooks (order.shipped/delivered).', 'compound-woocommerce' ),
 			),
+			'enable_card'    => array(
+				'title'   => __( 'Payment methods', 'compound-woocommerce' ),
+				'type'    => 'checkbox',
+				'label'   => __( 'Card', 'compound-woocommerce' ),
+				'default' => 'yes',
+			),
+			'enable_ach'     => array(
+				'type'    => 'checkbox',
+				'label'   => __( 'Bank transfer (ACH)', 'compound-woocommerce' ),
+				'default' => 'yes',
+			),
+			'enable_crypto'  => array(
+				'type'    => 'checkbox',
+				'label'   => __( 'Cryptocurrency', 'compound-woocommerce' ),
+				'default' => 'yes',
+			),
 		);
 	}
 
 	private function api(): WC_Compound_API {
 		return new WC_Compound_API(
-			$this->get_option( 'orders_url' ),
-			$this->get_option( 'payments_url' ),
+			$this->get_option( 'api_base' ),
 			$this->get_option( 'api_key' )
 		);
 	}
@@ -188,10 +247,14 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 		$api   = $this->api();
 
 		// The rail the shopper chose (WooCommerce has already verified the checkout nonce).
+		// A method that isn't currently enabled (tampered request, or disabled after the page
+		// loaded) falls back to whichever enabled rail sorts first - never a hardcoded 'card',
+		// which the merchant may have turned off.
+		$enabled = $this->methods();
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing
-		$method = isset( $_POST['compound_method'] ) ? sanitize_text_field( wp_unslash( $_POST['compound_method'] ) ) : 'card';
-		if ( ! array_key_exists( $method, $this->methods() ) ) {
-			$method = 'card';
+		$method = isset( $_POST['compound_method'] ) ? sanitize_text_field( wp_unslash( $_POST['compound_method'] ) ) : '';
+		if ( ! array_key_exists( $method, $enabled ) ) {
+			$method = (string) array_key_first( $enabled );
 		}
 		$order->update_meta_data( '_compound_method', $method );
 
