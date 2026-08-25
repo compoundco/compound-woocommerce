@@ -63,8 +63,8 @@ add_action(
 		// account-only checkout, mandatory COAs, disabled reviews - see COMPLIANCE.md).
 		// This is the chefspeps.com reference storefront's own regulatory posture, not a
 		// general requirement imposed on every merchant who installs this plugin - off by
-		// default. A deployment that needs it opts in via wp-config.php:
-		//   define( 'COMPOUND_WC_ENABLE_COMPLIANCE', true );
+		// default. A deployment that needs it opts in via wp-config.php with
+		// define( 'COMPOUND_WC_ENABLE_COMPLIANCE', true );.
 		if ( defined( 'COMPOUND_WC_ENABLE_COMPLIANCE' ) && COMPOUND_WC_ENABLE_COMPLIANCE ) {
 			require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-compliance.php';
 			( new WC_Compound_Compliance() )->register();
