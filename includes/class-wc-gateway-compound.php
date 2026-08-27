@@ -204,6 +204,13 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 				'default'     => 'https://api.thepeptides.company',
 				'desc_tip'    => true,
 			),
+			'portal_base'    => array(
+				'title'       => __( 'Brand portal URL', 'compound-woocommerce' ),
+				'type'        => 'text',
+				'description' => __( 'Used only to link a WooCommerce order to its record in the Compound brand portal (Order admin screen).', 'compound-woocommerce' ),
+				'default'     => 'https://app.thepeptides.company',
+				'desc_tip'    => true,
+			),
 			'webhook_secret' => array(
 				'title'       => __( 'Webhook signing secret', 'compound-woocommerce' ),
 				'type'        => 'password',
