@@ -104,8 +104,13 @@ resource "aws_s3_object" "provision" {
   key    = "provision.sh"
 
   content = templatefile("${path.module}/templates/provision.sh.tftpl", {
-    site_url             = local.site_url
-    site_title           = var.site_title
+    site_url = local.site_url
+    # Pre-escaped for the SINGLE-QUOTED shell context it is interpolated into. A title
+    # containing an apostrophe - "Chef's Peps" - otherwise closes the quote early and
+    # leaves the rest of provision.sh unterminated, which kills the whole script with
+    # "unexpected end of file" and leaves WordPress unprovisioned while the containers
+    # still come up healthy. `'\''` is the POSIX way to put a literal quote inside one.
+    site_title           = replace(var.site_title, "'", "'\\''")
     wp_admin_user        = var.wp_admin_user
     wp_admin_email       = var.wp_admin_email
     compound_environment = var.compound_environment
