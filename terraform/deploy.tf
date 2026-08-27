@@ -112,5 +112,7 @@ resource "aws_s3_object" "provision" {
     orders_url           = var.compound_orders_url
     payments_url         = var.compound_payments_url
     seed_products        = var.seed_products
+    sentry_dsn           = var.sentry_dsn
+    sentry_environment   = var.sentry_environment
   })
 }

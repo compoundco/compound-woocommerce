@@ -111,20 +111,34 @@ class WC_Compound_API {
 	 * @return array|WP_Error
 	 */
 	private function post( string $url, array $body, string $idempotency_key ) {
-		$response = wp_remote_post(
-			$url,
-			array(
-				'timeout' => 20,
-				'headers' => array(
-					'Content-Type'    => 'application/json',
-					'Authorization'   => 'Bearer ' . $this->api_key,
-					'Idempotency-Key' => $idempotency_key,
-				),
-				'body'    => wp_json_encode( $body ),
-			)
+		$args = array(
+			'timeout' => 20,
+			'headers' => array(
+				'Content-Type'    => 'application/json',
+				'Authorization'   => 'Bearer ' . $this->api_key,
+				'Idempotency-Key' => $idempotency_key,
+			),
+			'body'    => wp_json_encode( $body ),
 		);
 
+		$response = wp_remote_post( $url, $args );
+
+		// is_wp_error here means the request never got an HTTP response at all (DNS, TCP,
+		// TLS, timeout - e.g. the "Could not resolve host" class of failure) - never a
+		// decline or a validation error, which Compound always answers with a real status
+		// code instead. Retry once: the same Idempotency-Key makes this safe even if the
+		// first attempt actually reached Compound and only the response was lost in transit
+		// (Compound non-negotiable: "same key + same body returns the original result").
 		if ( is_wp_error( $response ) ) {
+			usleep( 500000 );
+			$response = wp_remote_post( $url, $args );
+		}
+
+		if ( is_wp_error( $response ) ) {
+			WC_Compound_Sentry::report(
+				'request failed after retry: ' . $response->get_error_message(),
+				array( 'url' => $url )
+			);
 			return $response;
 		}
 
@@ -138,6 +152,19 @@ class WC_Compound_API {
 			return new WP_Error( 'compound_api_error', $message, array( 'status' => $code ) );
 		}
 
-		return is_array( $decoded ) ? $decoded : array();
+		if ( ! is_array( $decoded ) ) {
+			// A 2xx with a body that isn't valid JSON - not a request failure by status code,
+			// but the caller still gets an empty array back and would otherwise never know.
+			WC_Compound_Sentry::report(
+				'Compound API returned a non-JSON 2xx body',
+				array(
+					'url'    => $url,
+					'status' => $code,
+				)
+			);
+			return array();
+		}
+
+		return $decoded;
 	}
 }
