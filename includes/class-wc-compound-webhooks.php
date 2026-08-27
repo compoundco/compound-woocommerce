@@ -36,11 +36,13 @@ class WC_Compound_Webhooks {
 
 		// Verify HMAC-SHA256 over the raw body before trusting anything.
 		if ( '' === $secret || ! $this->verify( $raw, $request->get_header( 'compound_signature' ), $secret ) ) {
+			WC_Compound_Sentry::report( 'inbound webhook: invalid signature' );
 			return new WP_REST_Response( array( 'error' => 'invalid signature' ), 401 );
 		}
 
 		$event = json_decode( $raw, true );
 		if ( ! is_array( $event ) || empty( $event['type'] ) ) {
+			WC_Compound_Sentry::report( 'inbound webhook: invalid payload' );
 			return new WP_REST_Response( array( 'error' => 'invalid payload' ), 400 );
 		}
 

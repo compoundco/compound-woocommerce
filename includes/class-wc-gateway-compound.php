@@ -260,6 +260,13 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 
 		$payment_method = $this->payment_method( $method );
 		if ( is_wp_error( $payment_method ) ) {
+			WC_Compound_Sentry::report(
+				'payment_method failed: ' . $payment_method->get_error_message(),
+				array(
+					'order_id' => $order_id,
+					'method'   => $method,
+				)
+			);
 			wc_add_notice( $payment_method->get_error_message(), 'error' );
 			return array( 'result' => 'failure' );
 		}
@@ -302,6 +309,13 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 			$meta
 		);
 		if ( is_wp_error( $created ) ) {
+			WC_Compound_Sentry::report(
+				'create_order failed: ' . $created->get_error_message(),
+				array(
+					'order_id'  => $order_id,
+					'reference' => $reference,
+				)
+			);
 			wc_add_notice( $created->get_error_message(), 'error' );
 			$order->add_order_note( 'Compound order intake failed: ' . $created->get_error_message() );
 			return array( 'result' => 'failure' );
@@ -327,6 +341,13 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 			$payment_method
 		);
 		if ( is_wp_error( $charge ) ) {
+			WC_Compound_Sentry::report(
+				'create_charge failed: ' . $charge->get_error_message(),
+				array(
+					'order_id'          => $order_id,
+					'compound_order_id' => $compound_order_id,
+				)
+			);
 			wc_add_notice( $charge->get_error_message(), 'error' );
 			$order->add_order_note( 'Compound charge failed: ' . $charge->get_error_message() );
 			$order->save();
