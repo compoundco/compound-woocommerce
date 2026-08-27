@@ -141,6 +141,12 @@ variable "compound_payments_url" {
   default     = "https://api.compound.dev"
 }
 
+variable "compound_portal_url" {
+  description = "Base URL of the Compound brand portal. Used only to link a WooCommerce order to its record there (Order admin screen)."
+  type        = string
+  default     = "https://app.compound.dev"
+}
+
 variable "compound_webhook_secret" {
   description = "Shared secret used to HMAC-verify inbound Compound webhooks at /wp-json/compound/v1/webhook. Leave empty to generate one."
   type        = string
