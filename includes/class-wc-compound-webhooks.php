@@ -75,6 +75,12 @@ class WC_Compound_Webhooks {
 					$order->save();
 				}
 				break;
+			case 'order.compounding':
+				// Note only - no status change. The order is already 'processing' from
+				// order.routed; compounding is a within-pharmacy step, not a new customer-facing
+				// milestone, but the merchant still sees it in the order's own note history.
+				$order->add_order_note( 'Compounding (Compound).' );
+				break;
 			case 'order.shipped':
 				$carrier  = (string) ( $data['carrier'] ?? '' );
 				$tracking = (string) ( $data['tracking_number'] ?? '' );
