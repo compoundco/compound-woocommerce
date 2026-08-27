@@ -32,9 +32,10 @@ class WC_Compound_API {
 	 * @param string $idempotency_key  Stable key so retries don't duplicate the order.
 	 * @param array  $meta             Attribution + discount recorded on the order:
 	 *                                 channel, attribution (assoc), coupon_code, discount_cents.
+	 * @param string $note             Customer-provided checkout note (optional).
 	 * @return array|WP_Error Decoded order on success.
 	 */
-	public function create_order( array $line_items, int $amount_cents, array $customer, array $shipping_address, string $order_reference, string $idempotency_key, array $meta = array() ) {
+	public function create_order( array $line_items, int $amount_cents, array $customer, array $shipping_address, string $order_reference, string $idempotency_key, array $meta = array(), string $note = '' ) {
 		$body = array(
 			'amount'           => $amount_cents,
 			'currency'         => 'usd',
@@ -47,6 +48,10 @@ class WC_Compound_API {
 			'coupon_code'      => $meta['coupon_code'] ?? '',
 			'discount_cents'   => $meta['discount_cents'] ?? 0,
 		);
+		// Omit entirely rather than sending an empty string - '' isn't the same as "no note".
+		if ( '' !== $note ) {
+			$body['note'] = $note;
+		}
 		return $this->post( $this->api_base . '/v1/orders', $body, $idempotency_key );
 	}
 

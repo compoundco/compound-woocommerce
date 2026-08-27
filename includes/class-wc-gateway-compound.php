@@ -306,7 +306,8 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 			$this->shipping_address( $order ),
 			$reference,
 			'wc-order-' . $reference,
-			$meta
+			$meta,
+			(string) $order->get_customer_note()
 		);
 		if ( is_wp_error( $created ) ) {
 			WC_Compound_Sentry::report(
