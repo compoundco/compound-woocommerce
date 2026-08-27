@@ -55,6 +55,12 @@ wp plugin is-active compound-woocommerce >/dev/null 2>&1 || wp plugin activate c
 # compound-gateway.php. This deployment explicitly opts in.
 wp config set COMPOUND_WC_ENABLE_COMPLIANCE true --raw --type=constant >/dev/null 2>&1 || true
 
+# Sentry error reporting (includes/class-wc-compound-sentry.php) - off unless a DSN is set.
+%{ if sentry_dsn != "" }
+wp config set COMPOUND_WC_SENTRY_DSN '${sentry_dsn}' --type=constant >/dev/null 2>&1 || true
+wp config set COMPOUND_WC_SENTRY_ENVIRONMENT '${sentry_environment}' --type=constant >/dev/null 2>&1 || true
+%{ endif }
+
 echo "==> store settings"
 wp option update blogname '${site_title}' >/dev/null
 wp option update blogdescription "Research peptides, shipped fast" >/dev/null

@@ -153,3 +153,22 @@ variable "seed_products" {
   type        = bool
   default     = true
 }
+
+# --- Observability -------------------------------------------------------------
+
+variable "sentry_dsn" {
+  description = <<-EOT
+    Sentry DSN for this plugin's error reporting (see includes/class-wc-compound-sentry.php).
+    A DSN is a public identifier, not a secret, but still deployment config rather than a
+    merchant-facing setting - same shape as compound_webhook_secret. Leave empty to disable
+    reporting entirely (the sender no-ops without one).
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "sentry_environment" {
+  description = "Environment tag attached to every reported event (e.g. staging, production)."
+  type        = string
+  default     = "production"
+}
