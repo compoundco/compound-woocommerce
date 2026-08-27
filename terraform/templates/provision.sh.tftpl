@@ -62,6 +62,8 @@ wp config set COMPOUND_WC_SENTRY_ENVIRONMENT '${sentry_environment}' --type=cons
 %{ endif }
 
 echo "==> store settings"
+# site_title arrives pre-escaped for single quotes (see deploy.tf). Keep it inside
+# single quotes; interpolating it anywhere else needs its own escaping.
 wp option update blogname '${site_title}' >/dev/null
 wp option update blogdescription "Research peptides, shipped fast" >/dev/null
 wp option update woocommerce_currency USD >/dev/null
