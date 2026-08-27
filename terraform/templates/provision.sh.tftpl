@@ -145,7 +145,6 @@ print(json.dumps({
     # payments_url below are always set to the same value; api_base is the one the
     # gateway actually reads (see WC_Gateway_Compound::migrate_legacy_settings).
     "api_base": "${orders_url}",
-    "portal_base": "${portal_url}",
     "webhook_secret": os.environ.get("COMPOUND_WEBHOOK_SECRET", ""),
     "enable_card": "yes",
     "enable_ach": "yes",
