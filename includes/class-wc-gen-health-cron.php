@@ -63,7 +63,18 @@ class WC_Gen_Health_Cron {
 		// Otherwise still under clinical review - leave it queued for the next poll.
 	}
 
-	private function approve( int $user_id, string $client_product_id, array $request, array $rx ): void {
+	/**
+	 * Record an approved consult's prescription + fill count. Public (not just called from
+	 * poll()) so class-wc-gen-health-dev-tools.php's sandbox-only "simulate approval" control
+	 * runs this exact same code path instead of a hand-rolled copy - a synthetic $rx array
+	 * shaped like a real Gen Health prescription record is indistinguishable to this method.
+	 *
+	 * @param int    $user_id           WordPress user id of the customer.
+	 * @param string $client_product_id Gen Health clientProductId.
+	 * @param array  $request           The stored (pending) request record.
+	 * @param array  $rx                One entry of Gen Health's order.prescriptions[].
+	 */
+	public function approve( int $user_id, string $client_product_id, array $request, array $rx ): void {
 		$refills                    = (int) ( $rx['refills'] ?? 0 );
 		$request['status']          = 'approved';
 		$request['prescription_id'] = (string) ( $rx['prescriptionId'] ?? '' );
@@ -76,7 +87,16 @@ class WC_Gen_Health_Cron {
 		WC_Gen_Health_Rx::dequeue_pending( $user_id, $client_product_id );
 	}
 
-	private function deny( int $user_id, string $client_product_id, array $request ): void {
+	/**
+	 * Record a denied consult and refund every linked, unshipped order. Public for the same
+	 * reason as approve() above - the sandbox-only dev-tools "simulate denial" control calls
+	 * this directly, so a simulated denial exercises the real refund path, not a mock of it.
+	 *
+	 * @param int    $user_id           WordPress user id of the customer.
+	 * @param string $client_product_id Gen Health clientProductId.
+	 * @param array  $request           The stored (pending) request record.
+	 */
+	public function deny( int $user_id, string $client_product_id, array $request ): void {
 		$request['status'] = 'denied';
 		WC_Gen_Health_Rx::save_request( $user_id, $client_product_id, $request );
 		WC_Gen_Health_Rx::dequeue_pending( $user_id, $client_product_id );
