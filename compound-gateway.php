@@ -3,7 +3,7 @@
  * Plugin Name:       Compound for WooCommerce
  * Plugin URI:        https://compound.dev
  * Description:       Route WooCommerce checkout and orders through Compound - payments orchestration + pharmacy fulfillment for DTC peptide brands.
- * Version:           0.1.13
+ * Version:           0.1.14
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            Compound
@@ -16,7 +16,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'COMPOUND_WC_VERSION', '0.1.13' );
+define( 'COMPOUND_WC_VERSION', '0.1.14' );
 define( 'COMPOUND_WC_FILE', __FILE__ );
 define( 'COMPOUND_WC_PATH', plugin_dir_path( __FILE__ ) );
 
@@ -44,6 +44,34 @@ add_action(
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-webhooks.php';
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-order-admin.php';
 		( new WC_Compound_Order_Admin() )->register();
+
+		// Telemedicine (Gen Health): health intake at signup, a consult started in parallel
+		// with any purchase (never gating it), and a refund through Compound if the consult
+		// is later denied. Off unless the merchant enables it in WooCommerce -> Settings ->
+		// Telemedicine; every handler below checks WC_Gen_Health_Settings::is_active() itself,
+		// so toggling it never needs a restart.
+		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-api.php';
+		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-settings.php';
+		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-rx.php';
+		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-product-meta.php';
+		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-intake.php';
+		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-order-link.php';
+		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-cron.php';
+		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-fulfillment.php';
+		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-profile-admin.php';
+		add_filter(
+			'woocommerce_get_settings_pages',
+			function ( $pages ) {
+				$pages[] = new WC_Gen_Health_Settings();
+				return $pages;
+			}
+		);
+		( new WC_Gen_Health_Product_Meta() )->register();
+		( new WC_Gen_Health_Intake() )->register();
+		( new WC_Gen_Health_Order_Link() )->register();
+		( new WC_Gen_Health_Cron() )->register();
+		( new WC_Gen_Health_Fulfillment() )->register();
+		( new WC_Gen_Health_Profile_Admin() )->register();
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-cli.php';

@@ -92,6 +92,10 @@ class WC_Compound_Webhooks {
 				} else {
 					$order->save();
 				}
+				// Extension point for anything else that cares an order shipped, without this
+				// file needing to know about it (e.g. class-wc-gen-health-fulfillment.php
+				// decrementing a prescription's fill count) - additive, no coupling back.
+				do_action( 'compound_wc_order_shipped', $order );
 				break;
 			case 'order.delivered':
 				$order->update_status( 'completed', 'Delivered (reported by Compound).' );
