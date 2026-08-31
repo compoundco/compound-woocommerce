@@ -107,6 +107,29 @@ class WC_Compound_API {
 	}
 
 	/**
+	 * Refund a captured charge, in full (omit $amount_cents) or in part. Real money movement
+	 * through Compound - never a WooCommerce-side status flip. Idempotent on $idempotency_key,
+	 * same as every other mutating call here.
+	 *
+	 * @param string   $charge_id       Compound charge id (order meta _compound_charge_id).
+	 * @param int|null $amount_cents    Partial amount in cents, or null for the full remaining balance.
+	 * @param string   $reason          Free-text reason, recorded on the refund.
+	 * @param string   $idempotency_key Stable key so a retry can't double-refund.
+	 * @return array|WP_Error Decoded charge (with its refund history) on success.
+	 */
+	public function refund_charge( string $charge_id, ?int $amount_cents, string $reason, string $idempotency_key ) {
+		$body = array( 'reason' => $reason );
+		if ( null !== $amount_cents ) {
+			$body['amount'] = $amount_cents;
+		}
+		return $this->post(
+			$this->api_base . '/v1/charges/' . rawurlencode( $charge_id ) . '/refund',
+			$body,
+			$idempotency_key
+		);
+	}
+
+	/**
 	 * POST JSON with the brand API key. Returns the decoded body, or a WP_Error whose
 	 * message is the Compound error envelope's message when present.
 	 *
