@@ -64,6 +64,8 @@ includes/class-wc-compound-api.php       HTTP client for the Compound external A
 includes/class-wc-gateway-compound.php   the WC_Payment_Gateway (settings + process_payment)
 includes/class-wc-compound-webhooks.php  inbound Compound webhooks -> WC order updates
 includes/class-wc-compound-cli.php       `wp compound sync_coupons` command
+includes/class-wc-gen-health-*.php       Telemedicine (Gen Health): intake, consult, cron poll, fills,
+                                          per-product gating, settings tab, user-profile admin panel
 Makefile                                 `make dev` (store up) / `make seed` (store data) / `make down`
 .wp-env.json / docker-compose.test.yml   Dockerized WordPress + WooCommerce test site (two ways)
 bin/setup-test-store.sh                  one command: key + matched products + theme + gateway
@@ -167,6 +169,26 @@ and the full resource list are in [terraform/README.md](terraform/README.md).
 | API base URL | Compound's public API - one host, routed to both Orders and Payments by path (default: `https://api.thepeptides.company`) |
 | Webhook signing secret | verifies inbound Compound webhooks |
 | Payment methods | toggle card / bank transfer (ACH) / cryptocurrency independently; the gateway is unavailable at checkout if every method is off |
+
+## Settings (WooCommerce -> Settings -> Telemedicine)
+
+Off by default. A customer completes a health intake once, at signup (a new My Account tab),
+which starts a Gen Health consult for whichever telehealth-gated product they picked -
+**this never blocks or holds a purchase**. A WP-Cron poll resolves the consult later: approval
+records the prescription + fill count; denial refunds every linked, not-yet-shipped order
+through Compound's real refund endpoint. Mark a product as gated, and give it the matching
+Gen Health `clientProductId`, on its Product Data -> General tab.
+
+| Setting | Notes |
+|---|---|
+| Enable telemedicine | off by default; every handler checks this live, so toggling it never needs a restart |
+| Client API key | a Gen Health Client API key (`X-API-Key`), never exposed to the browser |
+| API base URL | default `https://api.gen-health.app` |
+
+Per-customer intake/consult/fill state lives in user meta; a per-order `_gen_health_rx_request_id`
+meta links a WooCommerce order to the RX request it was purchased against, for refund attribution
+and fill accounting. See the class doc comments in `includes/class-wc-gen-health-*.php` for the
+exact data shape.
 
 ## Development
 
