@@ -3,7 +3,7 @@
  * Plugin Name:       Compound for WooCommerce
  * Plugin URI:        https://compound.dev
  * Description:       Route WooCommerce checkout and orders through Compound - payments orchestration + pharmacy fulfillment for DTC peptide brands.
- * Version:           0.1.14
+ * Version:           0.1.15
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            Compound
@@ -16,7 +16,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'COMPOUND_WC_VERSION', '0.1.14' );
+define( 'COMPOUND_WC_VERSION', '0.1.15' );
 define( 'COMPOUND_WC_FILE', __FILE__ );
 define( 'COMPOUND_WC_PATH', plugin_dir_path( __FILE__ ) );
 
@@ -59,6 +59,7 @@ add_action(
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-cron.php';
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-fulfillment.php';
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-profile-admin.php';
+		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-dev-tools.php';
 		add_filter(
 			'woocommerce_get_settings_pages',
 			function ( $pages ) {
@@ -69,9 +70,13 @@ add_action(
 		( new WC_Gen_Health_Product_Meta() )->register();
 		( new WC_Gen_Health_Intake() )->register();
 		( new WC_Gen_Health_Order_Link() )->register();
-		( new WC_Gen_Health_Cron() )->register();
+		$gen_health_cron = new WC_Gen_Health_Cron();
+		$gen_health_cron->register();
 		( new WC_Gen_Health_Fulfillment() )->register();
 		( new WC_Gen_Health_Profile_Admin() )->register();
+		// Sandbox-only manual approve/deny controls, sharing the cron's own resolution
+		// logic so a simulated outcome exercises the real fills/refund path.
+		( new WC_Gen_Health_Dev_Tools( $gen_health_cron ) )->register();
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-cli.php';
