@@ -60,10 +60,15 @@ add_action(
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-fulfillment.php';
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-profile-admin.php';
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-dev-tools.php';
+		// class-wc-gen-health-settings-page.php is require_once'd HERE, inside the filter,
+		// not in the top-level requires above - it extends WC_Settings_Page, which
+		// WooCommerce itself only loads lazily right before this filter fires. Requiring
+		// it any earlier is a fatal error on every page load. See that file's header.
 		add_filter(
 			'woocommerce_get_settings_pages',
 			function ( $pages ) {
-				$pages[] = new WC_Gen_Health_Settings();
+				require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-settings-page.php';
+				$pages[] = new WC_Gen_Health_Settings_Page();
 				return $pages;
 			}
 		);
