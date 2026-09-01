@@ -3,7 +3,7 @@
  * Plugin Name:       Compound for WooCommerce
  * Plugin URI:        https://compound.dev
  * Description:       Route WooCommerce checkout and orders through Compound - payments orchestration + pharmacy fulfillment for DTC peptide brands.
- * Version:           0.1.16
+ * Version:           0.1.17
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            Compound
@@ -16,7 +16,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'COMPOUND_WC_VERSION', '0.1.16' );
+define( 'COMPOUND_WC_VERSION', '0.1.17' );
 define( 'COMPOUND_WC_FILE', __FILE__ );
 define( 'COMPOUND_WC_PATH', plugin_dir_path( __FILE__ ) );
 
@@ -45,11 +45,15 @@ add_action(
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-order-admin.php';
 		( new WC_Compound_Order_Admin() )->register();
 
-		// Telemedicine (Gen Health): health intake at signup, a consult started in parallel
-		// with any purchase (never gating it), and a refund through Compound if the consult
-		// is later denied. Off unless the merchant enables it in WooCommerce -> Settings ->
-		// Telemedicine; every handler below checks WC_Gen_Health_Settings::is_active() itself,
-		// so toggling it never needs a restart.
+		// Telemedicine (Gen Health): health intake collected as part of registration itself
+		// (an account can't be created without it once at least one product is gated), and a
+		// consult started in parallel with any purchase (never gating a purchase) - a refund
+		// through Compound is the only consequence if the consult is later denied
+		// (class-wc-gen-health-cron.php). Off unless the merchant enables it in WooCommerce ->
+		// Settings -> Telemedicine; every handler below checks
+		// WC_Gen_Health_Settings::is_active() itself, so toggling it never needs a restart.
+		// Requiring an account to browse the catalog at all is a separate, pre-existing
+		// concern handled by the active theme (inc/access-control.php), not this plugin.
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-api.php';
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-settings.php';
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-rx.php';
