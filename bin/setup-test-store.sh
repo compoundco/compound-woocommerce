@@ -19,10 +19,12 @@
 # The gateway only ever configures ONE API base (Orders and Payments are one public
 # host, routed by path, in every real deployment). Locally, the raw compound monorepo
 # stack runs them on different ports (orders :4003, payments :4005) with nothing
-# unifying them - so GW_API_BASE below defaults to the orders port, which means a
-# full local checkout (needs a real charge, not just order creation) will fail against
-# a plain local stack. For a real end-to-end test, override BOTH GW_API_BASE and
-# COMPOUND_API_KEY together to point at a deployed environment instead, e.g.:
+# unifying them - so GW_API_BASE below defaults to the compound repo's local dev
+# gateway (`make dev` / `make dev-gateway`, scripts/dev-gateway.mts there), a small
+# reverse proxy on :4000 that mirrors the staging ALB's path routing so ONE local URL
+# reaches both services, same as api.thepeptides.company does when deployed. Make sure
+# that's running before `make seed` here. To test against a deployed environment
+# instead, override BOTH GW_API_BASE and COMPOUND_API_KEY together, e.g.:
 #   GW_API_BASE=https://stg.api.thepeptides.company COMPOUND_API_KEY=sk_sandbox_... \
 #     bin/setup-test-store.sh
 # (Mint that key via the admin portal - Developers - since staging's identity service
@@ -36,7 +38,7 @@ ORDERS_URL="${COMPOUND_ORDERS_URL:-http://localhost:4003}"
 DEMO_EMAIL="${COMPOUND_DEMO_EMAIL:-demo@acmepeptides.com}"
 DEMO_PASS="${COMPOUND_DEMO_PASS:-compound-demo-2026}"
 # The URL the WordPress container uses to reach Compound's API - see the note above.
-GW_API_BASE="${GW_API_BASE:-http://host.docker.internal:4003}"
+GW_API_BASE="${GW_API_BASE:-http://host.docker.internal:4000}"
 # The store's webhook URL as Compound's outbound worker (on the host) reaches it:
 STORE_WEBHOOK_URL="${COMPOUND_STORE_WEBHOOK_URL:-http://localhost:8888/wp-json/compound/v1/webhook}"
 WEBHOOK_SECRET="${COMPOUND_WEBHOOK_SECRET:-dev-webhook-secret}"
