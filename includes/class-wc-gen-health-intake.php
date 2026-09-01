@@ -1,13 +1,21 @@
 <?php
 /**
- * Health intake, collected once at signup, and the start of the first Gen Health consult.
- * Deliberately does NOT gate checkout or fulfillment in any way - a customer can buy a
- * telehealth-gated product before intake is complete or before a consult resolves; the only
- * consequence of a denied consult is a refund (class-wc-gen-health-cron.php), never a block.
+ * Health intake and the start of the first Gen Health consult. Primarily collected AS PART
+ * OF registration itself (fields injected into WooCommerce's own account-creation form via
+ * `woocommerce_register_form`, validated via `woocommerce_process_registration_errors` before
+ * the account is even created) - the My Account "Health intake" tab is a fallback for an
+ * account that ended up without intake some other way (created before telemedicine was
+ * enabled, created outside the storefront register form, etc.), not the primary path anymore.
  *
- * New territory for this plugin: no existing hook into account creation, no existing My
- * Account custom endpoint (see the plan's exploration notes) - both built fresh here,
- * following WooCommerce's own extension points rather than inventing new ones.
+ * Deliberately does NOT gate checkout or fulfillment in any way - a customer can buy a
+ * telehealth-gated product before a consult resolves; the only consequence of a denied
+ * consult is a refund (class-wc-gen-health-cron.php), never a block.
+ *
+ * Hook order verified against WooCommerce core (templates/myaccount/form-login.php,
+ * includes/class-wc-form-handler.php): `woocommerce_register_form` fires inside the
+ * register `<form>`, right before the submit button; `woocommerce_process_registration_errors`
+ * fires from WC_Form_Handler::process_registration() AFTER `woocommerce-register-nonce` has
+ * already been verified, so reading $_POST directly in both is safe.
  *
  * @package Compound\WooCommerce
  */
@@ -24,8 +32,12 @@ class WC_Gen_Health_Intake {
 		add_action( 'init', array( $this, 'add_endpoint' ) );
 		add_filter( 'woocommerce_account_menu_items', array( $this, 'add_menu_item' ) );
 		add_action( 'woocommerce_account_' . self::ENDPOINT . '_endpoint', array( $this, 'render' ) );
-		add_action( 'woocommerce_created_customer', array( $this, 'flag_intake_required' ), 10, 1 );
 		add_action( 'admin_post_gen_health_submit_intake', array( $this, 'handle_submit' ) );
+
+		// Primary path: collected as part of registration itself.
+		add_action( 'woocommerce_register_form', array( $this, 'render_registration_fields' ) );
+		add_filter( 'woocommerce_process_registration_errors', array( $this, 'validate_registration_fields' ), 10, 4 );
+		add_action( 'woocommerce_created_customer', array( $this, 'on_customer_created' ), 10, 1 );
 	}
 
 	/**
@@ -51,17 +63,85 @@ class WC_Gen_Health_Intake {
 	}
 
 	/**
-	 * New account created - mark intake as required. Registration itself only collects
-	 * email/username/password, never clinical data; the actual intake happens on the
-	 * My Account tab above, in its own request.
-	 *
-	 * @param int $customer_id WordPress user id of the new customer.
+	 * Renders the same intake fields as the My Account tab, inline inside WooCommerce's own
+	 * registration form. Skipped when there are no gated products yet - a required field with
+	 * no real option to pick would trap every registration on a store still being configured.
 	 */
-	public function flag_intake_required( int $customer_id ): void {
+	public function render_registration_fields(): void {
 		if ( ! WC_Gen_Health_Settings::is_active() ) {
 			return;
 		}
-		if ( ! get_user_meta( $customer_id, self::PATIENT_ID_META, true ) ) {
+		$products = $this->gated_products();
+		if ( empty( $products ) ) {
+			return;
+		}
+		echo '<h3>' . esc_html__( 'Health intake', 'compound-woocommerce' ) . '</h3>';
+		$this->render_fields( $products );
+	}
+
+	/**
+	 * Blocks account creation until intake is complete, when telemedicine is active and at
+	 * least one product is gated (mirrors render_registration_fields()'s own guard, so
+	 * validation never requires fields that were never shown).
+	 *
+	 * @param WP_Error $errors   Accumulated registration errors so far.
+	 * @param string   $username Chosen or generated username (unused; required by the filter signature).
+	 * @param string   $password Chosen or generated password (unused; required by the filter signature).
+	 * @param string   $email    The submitted email (unused; required by the filter signature).
+	 * @return WP_Error
+	 */
+	public function validate_registration_fields( $errors, $username, $password, $email ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter
+		if ( ! WC_Gen_Health_Settings::is_active() || empty( $this->gated_products() ) ) {
+			return $errors;
+		}
+		$required = array(
+			'client_product_id' => __( 'Choose what you are interested in.', 'compound-woocommerce' ),
+			'first_name'        => __( 'First name is required.', 'compound-woocommerce' ),
+			'last_name'         => __( 'Last name is required.', 'compound-woocommerce' ),
+			'phone'             => __( 'Phone is required.', 'compound-woocommerce' ),
+			'date_of_birth'     => __( 'Date of birth is required.', 'compound-woocommerce' ),
+			'street1'           => __( 'Street address is required.', 'compound-woocommerce' ),
+			'city'              => __( 'City is required.', 'compound-woocommerce' ),
+			'state'             => __( 'State is required.', 'compound-woocommerce' ),
+			'zip'               => __( 'ZIP is required.', 'compound-woocommerce' ),
+		);
+		foreach ( $required as $field => $message ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing -- WooCommerce verifies woocommerce-register-nonce before calling this filter (WC_Form_Handler::process_registration()).
+			$value = isset( $_POST[ $field ] ) ? sanitize_text_field( wp_unslash( $_POST[ $field ] ) ) : '';
+			if ( '' === $value ) {
+				$errors->add( 'gen_health_' . $field, $message );
+			}
+		}
+		return $errors;
+	}
+
+	/**
+	 * New account created. If intake fields came in with this same registration submission
+	 * (the normal case once validate_registration_fields() has required them), submit intake
+	 * immediately. Otherwise - an account created some other way - just flag it required, so
+	 * the My Account tab fallback picks it up later.
+	 *
+	 * @param int $customer_id WordPress user id of the new customer.
+	 */
+	public function on_customer_created( int $customer_id ): void {
+		if ( ! WC_Gen_Health_Settings::is_active() ) {
+			return;
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- see class doc comment.
+		$client_product_id = isset( $_POST['client_product_id'] ) ? sanitize_text_field( wp_unslash( $_POST['client_product_id'] ) ) : '';
+		if ( '' === $client_product_id ) {
+			if ( ! get_user_meta( $customer_id, self::PATIENT_ID_META, true ) ) {
+				update_user_meta( $customer_id, self::INTAKE_STATUS_META, 'required' );
+			}
+			return;
+		}
+		$user   = get_userdata( $customer_id );
+		$result = $this->submit_intake( $customer_id, $user ? $user->user_email : '', $client_product_id );
+		// A failure here is a Gen Health API problem, not a user-input problem (input was
+		// already validated above) - already reported to Sentry inside submit_intake(); the
+		// account still exists, and the customer can retry from the My Account tab rather
+		// than losing the account they just registered.
+		if ( is_wp_error( $result ) ) {
 			update_user_meta( $customer_id, self::INTAKE_STATUS_META, 'required' );
 		}
 	}
@@ -86,38 +166,48 @@ class WC_Gen_Health_Intake {
 			echo '<div class="woocommerce-error">' . esc_html( sanitize_text_field( wp_unslash( $_GET['gen_health_error'] ) ) ) . '</div>'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		}
 
-		$products = $this->gated_products();
 		?>
 		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 			<input type="hidden" name="action" value="gen_health_submit_intake" />
 			<?php wp_nonce_field( 'gen_health_submit_intake' ); ?>
-
-			<p>
-				<label for="gen_health_client_product_id"><?php esc_html_e( 'What are you interested in?', 'compound-woocommerce' ); ?></label><br />
-				<select name="client_product_id" id="gen_health_client_product_id" required>
-					<option value=""><?php esc_html_e( 'Select a product', 'compound-woocommerce' ); ?></option>
-					<?php foreach ( $products as $product ) : ?>
-						<option value="<?php echo esc_attr( WC_Gen_Health_Product_Meta::client_product_id( $product ) ); ?>">
-							<?php echo esc_html( $product->get_name() ); ?>
-						</option>
-					<?php endforeach; ?>
-				</select>
-			</p>
-
-			<p><label><?php esc_html_e( 'First name', 'compound-woocommerce' ); ?><br /><input type="text" name="first_name" required /></label></p>
-			<p><label><?php esc_html_e( 'Last name', 'compound-woocommerce' ); ?><br /><input type="text" name="last_name" required /></label></p>
-			<p><label><?php esc_html_e( 'Phone', 'compound-woocommerce' ); ?><br /><input type="tel" name="phone" required /></label></p>
-			<p><label><?php esc_html_e( 'Date of birth', 'compound-woocommerce' ); ?><br /><input type="date" name="date_of_birth" required /></label></p>
-			<p><label><?php esc_html_e( 'Street address', 'compound-woocommerce' ); ?><br /><input type="text" name="street1" required /></label></p>
-			<p><label><?php esc_html_e( 'City', 'compound-woocommerce' ); ?><br /><input type="text" name="city" required /></label></p>
-			<p><label><?php esc_html_e( 'State', 'compound-woocommerce' ); ?><br /><input type="text" name="state" maxlength="2" required /></label></p>
-			<p><label><?php esc_html_e( 'ZIP', 'compound-woocommerce' ); ?><br /><input type="text" name="zip" required /></label></p>
-			<p><label><?php esc_html_e( 'Known allergies (comma-separated, optional)', 'compound-woocommerce' ); ?><br /><input type="text" name="allergies" /></label></p>
-			<p><label><?php esc_html_e( 'Current medications (comma-separated, optional)', 'compound-woocommerce' ); ?><br /><input type="text" name="current_medications" /></label></p>
-			<p><label><?php esc_html_e( 'Medical conditions (comma-separated, optional)', 'compound-woocommerce' ); ?><br /><input type="text" name="medical_conditions" /></label></p>
-
+			<?php $this->render_fields( $this->gated_products() ); ?>
 			<button type="submit" class="woocommerce-Button button"><?php esc_html_e( 'Submit intake', 'compound-woocommerce' ); ?></button>
 		</form>
+		<?php
+	}
+
+	/**
+	 * The intake fields themselves - shared markup between the My Account tab (wrapped in its
+	 * own `<form>` above) and the registration form (already inside WooCommerce's own `<form>`,
+	 * via render_registration_fields()).
+	 *
+	 * @param WC_Product[] $products Gated products to offer in the "what are you interested in" select.
+	 */
+	private function render_fields( array $products ): void {
+		?>
+		<p>
+			<label for="gen_health_client_product_id"><?php esc_html_e( 'What are you interested in?', 'compound-woocommerce' ); ?></label><br />
+			<select name="client_product_id" id="gen_health_client_product_id" required>
+				<option value=""><?php esc_html_e( 'Select a product', 'compound-woocommerce' ); ?></option>
+				<?php foreach ( $products as $product ) : ?>
+					<option value="<?php echo esc_attr( WC_Gen_Health_Product_Meta::client_product_id( $product ) ); ?>">
+						<?php echo esc_html( $product->get_name() ); ?>
+					</option>
+				<?php endforeach; ?>
+			</select>
+		</p>
+
+		<p><label><?php esc_html_e( 'First name', 'compound-woocommerce' ); ?><br /><input type="text" name="first_name" required /></label></p>
+		<p><label><?php esc_html_e( 'Last name', 'compound-woocommerce' ); ?><br /><input type="text" name="last_name" required /></label></p>
+		<p><label><?php esc_html_e( 'Phone', 'compound-woocommerce' ); ?><br /><input type="tel" name="phone" required /></label></p>
+		<p><label><?php esc_html_e( 'Date of birth', 'compound-woocommerce' ); ?><br /><input type="date" name="date_of_birth" required /></label></p>
+		<p><label><?php esc_html_e( 'Street address', 'compound-woocommerce' ); ?><br /><input type="text" name="street1" required /></label></p>
+		<p><label><?php esc_html_e( 'City', 'compound-woocommerce' ); ?><br /><input type="text" name="city" required /></label></p>
+		<p><label><?php esc_html_e( 'State', 'compound-woocommerce' ); ?><br /><input type="text" name="state" maxlength="2" required /></label></p>
+		<p><label><?php esc_html_e( 'ZIP', 'compound-woocommerce' ); ?><br /><input type="text" name="zip" required /></label></p>
+		<p><label><?php esc_html_e( 'Known allergies (comma-separated, optional)', 'compound-woocommerce' ); ?><br /><input type="text" name="allergies" /></label></p>
+		<p><label><?php esc_html_e( 'Current medications (comma-separated, optional)', 'compound-woocommerce' ); ?><br /><input type="text" name="current_medications" /></label></p>
+		<p><label><?php esc_html_e( 'Medical conditions (comma-separated, optional)', 'compound-woocommerce' ); ?><br /><input type="text" name="medical_conditions" /></label></p>
 		<?php
 	}
 
@@ -136,45 +226,77 @@ class WC_Gen_Health_Intake {
 			$this->redirect_with_error( __( 'Choose what you are interested in.', 'compound-woocommerce' ) );
 		}
 
-		$patient = array(
-			'email'              => wp_get_current_user()->user_email,
-			'firstName'          => sanitize_text_field( wp_unslash( $_POST['first_name'] ?? '' ) ),
-			'lastName'           => sanitize_text_field( wp_unslash( $_POST['last_name'] ?? '' ) ),
-			'phone'              => sanitize_text_field( wp_unslash( $_POST['phone'] ?? '' ) ),
-			'dateOfBirth'        => sanitize_text_field( wp_unslash( $_POST['date_of_birth'] ?? '' ) ),
-			'address'            => array(
-				'street1' => sanitize_text_field( wp_unslash( $_POST['street1'] ?? '' ) ),
-				'city'    => sanitize_text_field( wp_unslash( $_POST['city'] ?? '' ) ),
-				'state'   => sanitize_text_field( wp_unslash( $_POST['state'] ?? '' ) ),
-				'zip'     => sanitize_text_field( wp_unslash( $_POST['zip'] ?? '' ) ),
-			),
-			'allergies'          => $this->csv_to_list( sanitize_text_field( wp_unslash( $_POST['allergies'] ?? '' ) ) ),
-			'currentMedications' => $this->csv_to_list( sanitize_text_field( wp_unslash( $_POST['current_medications'] ?? '' ) ) ),
-			'medicalConditions'  => array_map(
-				static fn( string $name ) => array( 'name' => $name ),
-				$this->csv_to_list( sanitize_text_field( wp_unslash( $_POST['medical_conditions'] ?? '' ) ) )
-			),
-		);
+		$result = $this->submit_intake( $user_id, wp_get_current_user()->user_email, $client_product_id );
+		if ( is_wp_error( $result ) ) {
+			$this->redirect_with_error( $result->get_error_message() );
+		}
 
+		wp_safe_redirect( wc_get_account_endpoint_url( self::ENDPOINT ) );
+		exit;
+	}
+
+	/**
+	 * Create the Gen Health patient from the current $_POST, start the consult, and store the
+	 * result on the user. Shared by the registration-time path (on_customer_created()) and the
+	 * My Account tab fallback (handle_submit()) - both read the same field names.
+	 *
+	 * @param int    $user_id           WordPress user id.
+	 * @param string $email             The account's email (patient creation requires it).
+	 * @param string $client_product_id Gen Health clientProductId to start the consult against.
+	 * @return true|WP_Error
+	 */
+	private function submit_intake( int $user_id, string $email, string $client_product_id ) {
 		$api    = WC_Gen_Health_Settings::api();
-		$result = $api->create_patient( $patient );
+		$result = $api->create_patient( $this->patient_from_post( $email ) );
 		if ( is_wp_error( $result ) ) {
 			WC_Compound_Sentry::report( 'Gen Health create_patient failed: ' . $result->get_error_message(), array( 'user_id' => $user_id ) );
-			$this->redirect_with_error( __( 'We could not submit your intake. Please try again.', 'compound-woocommerce' ) );
+			return new WP_Error( 'gen_health_create_patient_failed', __( 'We could not submit your intake. Please try again.', 'compound-woocommerce' ) );
 		}
 
 		$patient_id = (string) ( $result['patientId'] ?? '' );
 		if ( '' === $patient_id ) {
-			$this->redirect_with_error( __( 'We could not submit your intake. Please try again.', 'compound-woocommerce' ) );
+			return new WP_Error( 'gen_health_no_patient_id', __( 'We could not submit your intake. Please try again.', 'compound-woocommerce' ) );
 		}
 
 		update_user_meta( $user_id, self::PATIENT_ID_META, $patient_id );
 		update_user_meta( $user_id, self::INTAKE_STATUS_META, 'submitted' );
 
 		WC_Gen_Health_Rx::start_consult( $user_id, $patient_id, $client_product_id );
+		return true;
+	}
 
-		wp_safe_redirect( wc_get_account_endpoint_url( self::ENDPOINT ) );
-		exit;
+	/**
+	 * Builds the Gen Health patient payload from the current $_POST. Called only after a nonce
+	 * has already been verified by the caller (WooCommerce's own woocommerce-register-nonce
+	 * for registration, or gen_health_submit_intake for the My Account tab) - see class doc
+	 * comment - hence the phpcs:ignores below rather than re-checking a nonce here.
+	 *
+	 * @param string $email The patient's email (patient creation requires it directly - not
+	 *                       read from $_POST, since at registration time the account may not
+	 *                       be the logged-in user yet).
+	 * @return array Gen Health patient payload, built from $_POST.
+	 */
+	private function patient_from_post( string $email ): array {
+		return array(
+			'email'              => $email,
+			'firstName'          => sanitize_text_field( wp_unslash( $_POST['first_name'] ?? '' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			'lastName'           => sanitize_text_field( wp_unslash( $_POST['last_name'] ?? '' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			'phone'              => sanitize_text_field( wp_unslash( $_POST['phone'] ?? '' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			'dateOfBirth'        => sanitize_text_field( wp_unslash( $_POST['date_of_birth'] ?? '' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			'address'            => array(
+				'street1' => sanitize_text_field( wp_unslash( $_POST['street1'] ?? '' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
+				'city'    => sanitize_text_field( wp_unslash( $_POST['city'] ?? '' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
+				'state'   => sanitize_text_field( wp_unslash( $_POST['state'] ?? '' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
+				'zip'     => sanitize_text_field( wp_unslash( $_POST['zip'] ?? '' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			),
+			'allergies'          => $this->csv_to_list( sanitize_text_field( wp_unslash( $_POST['allergies'] ?? '' ) ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			'currentMedications' => $this->csv_to_list( sanitize_text_field( wp_unslash( $_POST['current_medications'] ?? '' ) ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			'medicalConditions'  => array_map(
+				static fn( string $name ) => array( 'name' => $name ),
+				// phpcs:ignore WordPress.Security.NonceVerification.Missing
+				$this->csv_to_list( sanitize_text_field( wp_unslash( $_POST['medical_conditions'] ?? '' ) ) )
+			),
+		);
 	}
 
 	private function redirect_with_error( string $message ): void {
