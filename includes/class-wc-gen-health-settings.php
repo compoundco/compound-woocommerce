@@ -21,6 +21,7 @@ defined( 'ABSPATH' ) || exit;
 class WC_Gen_Health_Settings {
 
 	const CACHE_TRANSIENT = 'compound_telemedicine_enabled';
+	const FORM_TRANSIENT  = 'compound_wc_intake_form';
 	const CACHE_TTL       = 15 * MINUTE_IN_SECONDS;
 
 	public static function api(): WC_Compound_API {
@@ -36,6 +37,32 @@ class WC_Gen_Health_Settings {
 	 * (there's currently no such local action - the admin portal is the only place this
 	 * changes - so the transient's own TTL is the only refresh path).
 	 */
+	/**
+	 * The brand's configured intake questions, cached on the same basis as is_active(): every
+	 * registration page render would otherwise call out to Compound. A failed fetch returns an
+	 * empty list, and callers fall back to the built-in question set rather than rendering an
+	 * empty form.
+	 *
+	 * @return array[] Question rows as Compound returns them.
+	 */
+	public static function intake_questions(): array {
+		$cached = get_transient( self::FORM_TRANSIENT );
+		if ( is_array( $cached ) ) {
+			return $cached;
+		}
+		$opts = get_option( 'woocommerce_compound_settings', array() );
+		$opts = is_array( $opts ) ? $opts : array();
+		if ( empty( $opts['api_key'] ) || empty( $opts['api_base'] ) ) {
+			return array();
+		}
+		$result = self::api()->telemedicine_intake_form();
+		if ( is_wp_error( $result ) || ! isset( $result['questions'] ) || ! is_array( $result['questions'] ) ) {
+			return array();
+		}
+		set_transient( self::FORM_TRANSIENT, $result['questions'], self::CACHE_TTL );
+		return $result['questions'];
+	}
+
 	public static function is_active(): bool {
 		$cached = get_transient( self::CACHE_TRANSIENT );
 		if ( false !== $cached ) {

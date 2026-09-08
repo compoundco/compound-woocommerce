@@ -162,6 +162,17 @@ class WC_Compound_API {
 	}
 
 	/**
+	 * The brand's configured intake questions. Compound owns this configuration (the brand
+	 * edits it in the Compound portal), so the storefront renders whatever comes back rather
+	 * than shipping its own idea of what to ask.
+	 *
+	 * @return array|WP_Error {questions: array[]}
+	 */
+	public function telemedicine_intake_form() {
+		return $this->get( $this->api_base . '/v1/telemedicine/intake-form' );
+	}
+
+	/**
 	 * A customer's consults (status + fills remaining), most recent first.
 	 *
 	 * @param string $email Customer's account email.
