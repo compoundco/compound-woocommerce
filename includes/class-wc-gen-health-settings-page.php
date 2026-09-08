@@ -1,9 +1,15 @@
 <?php
 /**
- * The "Telemedicine" WooCommerce Settings tab itself - split out from
- * class-wc-gen-health-settings.php specifically because this one extends WC_Settings_Page.
- * That base class is NOT loaded eagerly by WooCommerce (unlike WC_Payment_Gateway, which is):
- * WooCommerce only `include_once`s it lazily, from inside
+ * The "Telemedicine" WooCommerce Settings tab - now a read-only status display, not a
+ * configuration form. There is nothing left to configure here: no Gen Health credential, no
+ * base URL, and "enable telemedicine" itself is set from the Compound admin portal, not
+ * WordPress (see class-wc-gen-health-settings.php's header for why). This tab exists so a
+ * merchant looking under Settings -> Telemedicine (where it always was) finds an explanation
+ * and a link out, instead of a tab that quietly vanished.
+ *
+ * Split out from class-wc-gen-health-settings.php specifically because this one extends
+ * WC_Settings_Page. That base class is NOT loaded eagerly by WooCommerce (unlike
+ * WC_Payment_Gateway, which is): WooCommerce only `include_once`s it lazily, from inside
  * WC_Admin_Settings::get_settings_pages(), immediately before firing the
  * `woocommerce_get_settings_pages` filter. Requiring this file - and so declaring `extends
  * WC_Settings_Page` - any earlier than that filter firing is a fatal "Class WC_Settings_Page
@@ -27,46 +33,35 @@ class WC_Gen_Health_Settings_Page extends WC_Settings_Page {
 	}
 
 	public function get_settings( $current_section = '' ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.VariableNotSnakeCase
-		return array(
-			array(
-				'title' => __( 'Telemedicine (Gen Health)', 'compound-woocommerce' ),
-				'type'  => 'title',
-				'desc'  => __( 'Collects a health intake at signup and starts a clinical consult with Gen Health. Compound still collects payment and routes fulfillment - Gen Health is used only for intake, review, and the resulting prescription.', 'compound-woocommerce' ),
-				'id'    => 'gen_health_options',
-			),
-			array(
-				'title'   => __( 'Enable telemedicine', 'compound-woocommerce' ),
-				'desc'    => __( 'Require a health intake at signup and start a consult for products marked "Requires telehealth consult".', 'compound-woocommerce' ),
-				'id'      => WC_Gen_Health_Settings::OPTION_KEY . '[enabled]',
-				'default' => 'no',
-				'type'    => 'checkbox',
-			),
-			array(
-				'title'    => __( 'Client API key', 'compound-woocommerce' ),
-				'desc'     => __( 'A Gen Health Client API key (X-API-Key). Never exposed to the browser.', 'compound-woocommerce' ),
-				'id'       => WC_Gen_Health_Settings::OPTION_KEY . '[api_key]',
-				'type'     => 'password',
-				'desc_tip' => true,
-			),
-			array(
-				'title'    => __( 'API base URL', 'compound-woocommerce' ),
-				'id'       => WC_Gen_Health_Settings::OPTION_KEY . '[api_base]',
-				'type'     => 'text',
-				'default'  => 'https://api.gen-health.app',
-				'desc_tip' => true,
-			),
-			array(
-				'type' => 'sectionend',
-				'id'   => 'gen_health_options',
-			),
-		);
+		return array();
 	}
 
 	public function output() {
-		WC_Admin_Settings::output_fields( $this->get_settings() );
+		$configured = self::compound_configured();
+		echo '<h2>' . esc_html__( 'Telemedicine (Gen Health)', 'compound-woocommerce' ) . '</h2>';
+		echo '<p>' . esc_html__( 'Collects a health intake at signup and starts a clinical consult for products that require one. Compound routes this to its telehealth provider on your behalf - it is not something this plugin configures directly.', 'compound-woocommerce' ) . '</p>';
+
+		if ( ! $configured ) {
+			echo '<p>' . esc_html__( 'Connect your Compound API key under Payments (Compound) -> API before turning telemedicine on.', 'compound-woocommerce' ) . '</p>';
+			return;
+		}
+
+		$enabled = WC_Gen_Health_Settings::is_active();
+		echo '<p><strong>' . esc_html__( 'Status:', 'compound-woocommerce' ) . '</strong> ';
+		echo $enabled // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static strings only.
+			? esc_html__( 'On', 'compound-woocommerce' )
+			: esc_html__( 'Off', 'compound-woocommerce' );
+		echo '</p>';
+		echo '<p>' . esc_html__( 'Turn telemedicine on or off, and manage which products require a consult, from your Compound dashboard.', 'compound-woocommerce' ) . '</p>';
 	}
 
 	public function save() {
-		WC_Admin_Settings::save_fields( $this->get_settings() );
+		// Nothing to save - see class doc comment.
+	}
+
+	private static function compound_configured(): bool {
+		$opts = get_option( 'woocommerce_compound_settings', array() );
+		$opts = is_array( $opts ) ? $opts : array();
+		return ! empty( $opts['api_key'] ) && ! empty( $opts['api_base'] );
 	}
 }

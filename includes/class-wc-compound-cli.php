@@ -57,94 +57,85 @@ class WC_Compound_CLI {
 	}
 
 	/**
-	 * Simulate a Gen Health consult being approved, without waiting on real clinical review
-	 * or the hourly cron poll. Runs the exact same code the poll uses
-	 * (WC_Gen_Health_Cron::approve()) - scriptable counterpart to the sandbox-only dev-tools
-	 * buttons on the user-profile screen (class-wc-gen-health-dev-tools.php).
+	 * Simulate a consult being approved, without waiting on real clinical review. Calls
+	 * Compound's own sandbox dev/resolve endpoint (WC_Compound_API::telemedicine_dev_resolve())
+	 * - the exact same fills/refund logic the real poll uses runs on the Compound side, not a
+	 * local copy of it. Scriptable counterpart to the sandbox-only dev-tools buttons on the
+	 * user-profile screen (class-wc-gen-health-dev-tools.php).
 	 *
 	 * ## OPTIONS
 	 *
-	 * <user_id>
-	 * : WordPress user id of the customer.
+	 * <email>
+	 * : Customer's account email.
 	 *
-	 * <client_product_id>
-	 * : Gen Health clientProductId the pending request is for.
-	 *
-	 * [--medication=<medication>]
-	 * : Medication name to record. Default: "Simulated medication".
+	 * <product_sku>
+	 * : SKU the pending consult was started for.
 	 *
 	 * [--refills=<refills>]
-	 * : Refills to authorize (fills_total becomes 1 + refills). Default: 2.
+	 * : Refills to authorize (Compound records fills_total as 1 + refills). Default: 2.
 	 *
 	 * ## EXAMPLES
-	 *     wp compound gen_health_approve 42 clientA_network1_prodX --medication="Semaglutide" --refills=3
+	 *     wp compound gen_health_approve patient@example.com glp1-starter --refills=3
 	 *
-	 * @param array $args       Positional: [user_id, client_product_id].
-	 * @param array $assoc_args Associative: medication, refills.
+	 * @param array $args       Positional: [email, product_sku].
+	 * @param array $assoc_args Associative: refills.
 	 */
 	public function gen_health_approve( $args, $assoc_args ) {
-		[$user_id, $client_product_id] = array( (int) ( $args[0] ?? 0 ), (string) ( $args[1] ?? '' ) );
-		$request                       = $this->gen_health_pending_request( $user_id, $client_product_id );
-
-		( new WC_Gen_Health_Cron() )->approve(
-			$user_id,
-			$client_product_id,
-			$request,
-			array(
-				'refills'        => max( 0, (int) ( $assoc_args['refills'] ?? 2 ) ),
-				'prescriptionId' => 'sim_' . wp_generate_password( 10, false ),
-				'medicationName' => (string) ( $assoc_args['medication'] ?? 'Simulated medication' ),
-				'providerName'   => 'Dev simulation (WP-CLI)',
-			)
+		$consult = $this->gen_health_pending_consult( (string) ( $args[0] ?? '' ), (string) ( $args[1] ?? '' ) );
+		WC_Gen_Health_Settings::api()->telemedicine_dev_resolve(
+			(string) $consult['id'],
+			'approved',
+			max( 0, (int) ( $assoc_args['refills'] ?? 2 ) )
 		);
-		WP_CLI::success( "Approved {$client_product_id} for user {$user_id}." );
+		WP_CLI::success( "Approved consult {$consult['id']}." );
 	}
 
 	/**
-	 * Simulate a Gen Health consult being denied - refunds every linked, unshipped WooCommerce
-	 * order through the real Compound refund endpoint, exactly like a real denial would.
+	 * Simulate a consult being denied - refunds every linked, unshipped WooCommerce order
+	 * through the real Compound refund endpoint, exactly like a real denial would.
 	 *
 	 * ## OPTIONS
 	 *
-	 * <user_id>
-	 * : WordPress user id of the customer.
+	 * <email>
+	 * : Customer's account email.
 	 *
-	 * <client_product_id>
-	 * : Gen Health clientProductId the pending request is for.
+	 * <product_sku>
+	 * : SKU the pending consult was started for.
 	 *
 	 * ## EXAMPLES
-	 *     wp compound gen_health_deny 42 clientA_network1_prodX
+	 *     wp compound gen_health_deny patient@example.com glp1-starter
 	 *
-	 * @param array $args       Positional: [user_id, client_product_id].
+	 * @param array $args       Positional: [email, product_sku].
 	 * @param array $assoc_args Associative arguments. WP-CLI always passes these; unused.
 	 */
 	public function gen_health_deny( $args, $assoc_args ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter
-		[$user_id, $client_product_id] = array( (int) ( $args[0] ?? 0 ), (string) ( $args[1] ?? '' ) );
-		$request                       = $this->gen_health_pending_request( $user_id, $client_product_id );
-
-		( new WC_Gen_Health_Cron() )->deny( $user_id, $client_product_id, $request );
-		WP_CLI::success( "Denied {$client_product_id} for user {$user_id} - linked unshipped orders refunded through Compound." );
+		$consult = $this->gen_health_pending_consult( (string) ( $args[0] ?? '' ), (string) ( $args[1] ?? '' ) );
+		WC_Gen_Health_Settings::api()->telemedicine_dev_resolve( (string) $consult['id'], 'denied' );
+		WP_CLI::success( "Denied consult {$consult['id']} - linked unshipped orders refunded through Compound." );
 	}
 
 	/**
-	 * Look up a pending Gen Health RX request, or halt the CLI command with a clear error.
+	 * Look up a customer's pending consult for a SKU via Compound, or halt the CLI command
+	 * with a clear error.
 	 *
-	 * @param int    $user_id           WordPress user id of the customer.
-	 * @param string $client_product_id Gen Health clientProductId.
-	 * @return array The pending request record, or a WP_CLI::error() (never returns) if
-	 *               there isn't one to act on.
+	 * @param string $email       Customer's account email.
+	 * @param string $product_sku SKU the consult was started for.
+	 * @return array The pending consult record - never returns if there isn't one to act on.
 	 */
-	private function gen_health_pending_request( int $user_id, string $client_product_id ) {
-		if ( ! $user_id || '' === $client_product_id ) {
-			WP_CLI::error( 'Usage: wp compound gen_health_approve|gen_health_deny <user_id> <client_product_id>' );
+	private function gen_health_pending_consult( string $email, string $product_sku ): array {
+		if ( '' === $email || '' === $product_sku ) {
+			WP_CLI::error( 'Usage: wp compound gen_health_approve|gen_health_deny <email> <product_sku>' );
 		}
-		$request = WC_Gen_Health_Rx::get_request( $user_id, $client_product_id );
-		if ( null === $request ) {
-			WP_CLI::error( "No Gen Health request found for user {$user_id} / {$client_product_id}." );
+		$result = WC_Gen_Health_Settings::api()->telemedicine_consults( $email );
+		if ( is_wp_error( $result ) ) {
+			WP_CLI::error( $result->get_error_message() );
 		}
-		if ( 'pending' !== $request['status'] ) {
-			WP_CLI::error( "Request is already {$request['status']}, not pending." );
+		$consults = is_array( $result['consults'] ?? null ) ? $result['consults'] : array();
+		foreach ( $consults as $consult ) {
+			if ( ( $consult['product_sku'] ?? '' ) === $product_sku && 'pending' === ( $consult['status'] ?? '' ) ) {
+				return $consult;
+			}
 		}
-		return $request;
+		WP_CLI::error( "No pending consult found for {$email} / {$product_sku}." );
 	}
 }

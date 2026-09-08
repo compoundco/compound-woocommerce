@@ -1,8 +1,10 @@
 <?php
 /**
- * A "Telemedicine (Gen Health)" panel on the WP user-profile screen: intake status,
- * patientId, and per-medication RX status + fills remaining. The Rx PDF is never stored -
- * "View Rx PDF" fetches a fresh, short-lived signed URL from Gen Health on click and
+ * A "Telemedicine" panel on the WP user-profile screen: consult status and fills remaining
+ * for each of this customer's gated products, read live from Compound
+ * (WC_Compound_API::telemedicine_consults()) - this plugin keeps no local copy of any of it.
+ * The prescription PDF is never stored - "View prescription" fetches a fresh, short-lived
+ * link from Compound (which itself fetches fresh from the telehealth provider) on click and
  * redirects straight to it.
  *
  * No existing precedent in this plugin for a user-profile-screen panel (the closest analog,
@@ -26,45 +28,52 @@ class WC_Gen_Health_Profile_Admin {
 			return;
 		}
 
-		$patient_id = get_user_meta( $user->ID, WC_Gen_Health_Intake::PATIENT_ID_META, true );
-		echo '<h2>' . esc_html__( 'Telemedicine (Gen Health)', 'compound-woocommerce' ) . '</h2>';
-		echo '<table class="form-table" role="presentation"><tbody>';
-		echo '<tr><th>' . esc_html__( 'Patient ID', 'compound-woocommerce' ) . '</th><td>';
-		echo $patient_id ? '<code>' . esc_html( $patient_id ) . '</code>' : esc_html__( 'No intake on file.', 'compound-woocommerce' );
-		echo '</td></tr>';
+		$result   = WC_Gen_Health_Settings::api()->telemedicine_consults( $user->user_email );
+		$consults = is_wp_error( $result ) ? array() : ( is_array( $result['consults'] ?? null ) ? $result['consults'] : array() );
 
-		foreach ( $this->gated_products() as $client_product_id => $label ) {
-			$request = WC_Gen_Health_Rx::get_request( $user->ID, $client_product_id );
-			if ( null === $request ) {
-				continue;
-			}
-			echo '<tr><th>' . esc_html( $label ) . '</th><td>';
-			printf( '%s: <strong>%s</strong>', esc_html__( 'Status', 'compound-woocommerce' ), esc_html( $request['status'] ) );
-			if ( 'approved' === $request['status'] ) {
-				printf(
-					' &mdash; %s &mdash; %s: %d/%d',
-					esc_html( $request['medication'] ),
-					esc_html__( 'fills remaining', 'compound-woocommerce' ),
-					(int) $request['fills_remaining'],
-					(int) $request['fills_total']
-				);
-				if ( '' !== $request['prescription_id'] ) {
-					$url = wp_nonce_url(
-						add_query_arg(
-							array(
-								'action'          => 'gen_health_fetch_rx_pdf',
-								'prescription_id' => $request['prescription_id'],
-							),
-							admin_url( 'admin-post.php' )
-						),
-						'gen_health_fetch_rx_pdf'
-					);
-					echo ' &mdash; <a href="' . esc_url( $url ) . '" target="_blank" rel="noopener noreferrer">' . esc_html__( 'View Rx PDF', 'compound-woocommerce' ) . '</a>';
-				}
-			}
-			echo '</td></tr>';
+		echo '<h2>' . esc_html__( 'Telemedicine', 'compound-woocommerce' ) . '</h2>';
+		if ( is_wp_error( $result ) ) {
+			echo '<p>' . esc_html__( 'Could not reach Compound to load telemedicine status.', 'compound-woocommerce' ) . '</p>';
+			return;
+		}
+		if ( empty( $consults ) ) {
+			echo '<p>' . esc_html__( 'No intake on file.', 'compound-woocommerce' ) . '</p>';
+			return;
+		}
+
+		echo '<table class="form-table" role="presentation"><tbody>';
+		foreach ( $consults as $consult ) {
+			$this->render_row( $consult );
 		}
 		echo '</tbody></table>';
+	}
+
+	private function render_row( array $consult ): void {
+		echo '<tr><th>' . esc_html( (string) ( $consult['product_sku'] ?? '' ) ) . '</th><td>';
+		printf( '%s: <strong>%s</strong>', esc_html__( 'Status', 'compound-woocommerce' ), esc_html( (string) ( $consult['status'] ?? '' ) ) );
+		if ( 'approved' === ( $consult['status'] ?? '' ) ) {
+			printf(
+				' &mdash; %s: %d/%d',
+				esc_html__( 'fills remaining', 'compound-woocommerce' ),
+				(int) ( $consult['fills_remaining'] ?? 0 ),
+				(int) ( $consult['fills_total'] ?? 0 )
+			);
+			$consult_id = (string) ( $consult['id'] ?? '' );
+			if ( '' !== $consult_id ) {
+				$url = wp_nonce_url(
+					add_query_arg(
+						array(
+							'action'     => 'gen_health_fetch_rx_pdf',
+							'consult_id' => $consult_id,
+						),
+						admin_url( 'admin-post.php' )
+					),
+					'gen_health_fetch_rx_pdf'
+				);
+				echo ' &mdash; <a href="' . esc_url( $url ) . '" target="_blank" rel="noopener noreferrer">' . esc_html__( 'View prescription', 'compound-woocommerce' ) . '</a>';
+			}
+		}
+		echo '</td></tr>';
 	}
 
 	public function fetch_pdf(): void {
@@ -72,49 +81,15 @@ class WC_Gen_Health_Profile_Admin {
 			wp_die( esc_html__( 'Not allowed.', 'compound-woocommerce' ) );
 		}
 		check_admin_referer( 'gen_health_fetch_rx_pdf' );
-		$prescription_id = isset( $_GET['prescription_id'] ) ? sanitize_text_field( wp_unslash( $_GET['prescription_id'] ) ) : '';
-		if ( '' === $prescription_id ) {
-			wp_die( esc_html__( 'Missing prescription id.', 'compound-woocommerce' ) );
+		$consult_id = isset( $_GET['consult_id'] ) ? sanitize_text_field( wp_unslash( $_GET['consult_id'] ) ) : '';
+		if ( '' === $consult_id ) {
+			wp_die( esc_html__( 'Missing consult id.', 'compound-woocommerce' ) );
 		}
-		$result = WC_Gen_Health_Settings::api()->get_prescription( $prescription_id );
-		if ( is_wp_error( $result ) || empty( $result['pdfUrl'] ) ) {
-			wp_die( esc_html__( 'Could not retrieve the prescription PDF.', 'compound-woocommerce' ) );
+		$result = WC_Gen_Health_Settings::api()->telemedicine_consult_detail( $consult_id );
+		if ( is_wp_error( $result ) || empty( $result['pdf_url'] ) ) {
+			wp_die( esc_html__( 'Could not retrieve the prescription.', 'compound-woocommerce' ) );
 		}
-		wp_safe_redirect( esc_url_raw( $result['pdfUrl'] ) );
+		wp_safe_redirect( esc_url_raw( $result['pdf_url'] ) );
 		exit;
-	}
-
-	/**
-	 * Published products flagged as requiring a consult.
-	 *
-	 * @return array<string, string> client_product_id => product name.
-	 */
-	private function gated_products(): array {
-		$ids = wc_get_products(
-			array(
-				'status'     => 'publish',
-				'limit'      => -1,
-				'return'     => 'ids',
-				'meta_query' => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
-					array(
-						'key'   => WC_Gen_Health_Product_Meta::REQUIRES_CONSULT_META,
-						'value' => 'yes',
-					),
-				),
-			)
-		);
-		$out = array();
-		foreach ( $ids as $id ) {
-			$product = wc_get_product( $id );
-			if ( ! $product ) {
-				continue;
-			}
-			$client_product_id = WC_Gen_Health_Product_Meta::client_product_id( $product );
-			if ( '' === $client_product_id ) {
-				continue;
-			}
-			$out[ $client_product_id ] = $product->get_name();
-		}
-		return $out;
 	}
 }
