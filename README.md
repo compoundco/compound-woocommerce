@@ -64,8 +64,11 @@ includes/class-wc-compound-api.php       HTTP client for the Compound external A
 includes/class-wc-gateway-compound.php   the WC_Payment_Gateway (settings + process_payment)
 includes/class-wc-compound-webhooks.php  inbound Compound webhooks -> WC order updates
 includes/class-wc-compound-cli.php       `wp compound sync_coupons` command
-includes/class-wc-gen-health-*.php       Telemedicine (Gen Health): intake, consult, cron poll, fills,
-                                          per-product gating, settings tab, user-profile admin panel
+includes/class-wc-gen-health-*.php       Telemedicine: intake collection, per-product gating, settings
+                                          tab (status display), user-profile admin panel, sandbox dev
+                                          tools. Everything else (patient/consult, resolution, fills,
+                                          refund-on-denial) lives in Compound now - this plugin never
+                                          talks to the telehealth provider directly (see settings.php)
 Makefile                                 `make dev` (store up) / `make seed` (store data) / `make down`
 .wp-env.json / docker-compose.test.yml   Dockerized WordPress + WooCommerce test site (two ways)
 bin/setup-test-store.sh                  one command: key + matched products + theme + gateway
@@ -165,30 +168,48 @@ and the full resource list are in [terraform/README.md](terraform/README.md).
 | Setting | Notes |
 |---|---|
 | Environment | `sandbox` (test, no real money) or `live` |
-| Secret API key | `sk_...` with `orders:write` + `charges:write` |
+| Secret API key | `sk_...` with `orders:write` + `charges:write` (add `telemedicine:write` + `telemedicine:read` too if telemedicine is enabled - see below) |
 | API base URL | Compound's public API - one host, routed to both Orders and Payments by path (default: `https://api.thepeptides.company`) |
 | Webhook signing secret | verifies inbound Compound webhooks |
 | Payment methods | toggle card / bank transfer (ACH) / cryptocurrency independently; the gateway is unavailable at checkout if every method is off |
 
 ## Settings (WooCommerce -> Settings -> Telemedicine)
 
-Off by default. A customer completes a health intake once, at signup (a new My Account tab),
-which starts a Gen Health consult for whichever telehealth-gated product they picked -
-**this never blocks or holds a purchase**. A WP-Cron poll resolves the consult later: approval
-records the prescription + fill count; denial refunds every linked, not-yet-shipped order
-through Compound's real refund endpoint. Mark a product as gated, and give it the matching
-Gen Health `clientProductId`, on its Product Data -> General tab.
+Off by default, and turned on from the **Compound admin portal** (Settings page), not here -
+this plugin has nothing to configure for telemedicine beyond its normal Compound API
+key/base URL above (add the `telemedicine:write` + `telemedicine:read` scopes to it). The
+Settings -> Telemedicine tab in WooCommerce is a **read-only status display** now: it shows
+on/off (read live from Compound) and links out to the admin portal to change it.
 
-| Setting | Notes |
-|---|---|
-| Enable telemedicine | off by default; every handler checks this live, so toggling it never needs a restart |
-| Client API key | a Gen Health Client API key (`X-API-Key`), never exposed to the browser |
-| API base URL | default `https://api.gen-health.app` |
+A customer completes a health intake once, at signup (a new My Account tab), which starts a
+consult for whichever product they picked - **this never blocks or holds a purchase**.
+Compound is the only party that talks to the telehealth provider; this plugin forwards the
+intake straight through and never stores it, or the provider's name, anywhere. Compound picks
+the provider from routing rules the brand configures in the Compound admin portal, and this
+plugin is never told which one handled a consult. Compound resolves the consult later
+(server-side, by poll or by provider webhook depending on the provider - not WP-Cron, this
+plugin no longer runs one): approval records the fill count or a validity window; denial
+refunds every linked, not-yet-shipped order through Compound's real refund endpoint.
 
-Per-customer intake/consult/fill state lives in user meta; a per-order `_gen_health_rx_request_id`
-meta links a WooCommerce order to the RX request it was purchased against, for refund attribution
-and fill accounting. See the class doc comments in `includes/class-wc-gen-health-*.php` for the
-exact data shape.
+**Gating has no per-product opt-in.** Once telemedicine is on for the brand, every published
+product is gated - the intake form's product picker lists the whole catalog, and every
+checkout line item is tagged with a consult type and kind.
+
+- **Consult type override** (Product Data -> General): a product's SKU is its consult type by
+  default; set this only if a product needs a different one.
+- **Consult kind** (Product Data -> General): whether this product's consult is a
+  **good faith exam** or an **exam + prescription**. Defaults to exam + prescription. The two
+  are not interchangeable, and Compound routes on the difference: a good faith exam produces
+  no prescription and stays valid for a period, whereas an exam + prescription is consumed by
+  fills. Some providers are only enabled for one of them, so a mismatch is refused at intake
+  with a readable error rather than routed to the wrong lane.
+
+This plugin keeps **no local patient/consult/fill state** - status shown anywhere (the My
+Account tab, the user-profile admin panel) is always read live from Compound
+(`WC_Compound_API::telemedicine_consults()`/`telemedicine_consult_detail()`). Sandbox-only dev
+tools (user-profile buttons, `wp compound gen_health_approve|deny <email> <product_sku>`) call
+Compound's own sandbox simulation endpoint rather than resolving anything locally. See the
+class doc comments in `includes/class-wc-gen-health-*.php` for the exact request/response shapes.
 
 ## Development
 
