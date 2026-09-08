@@ -55,9 +55,12 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 	 */
 	public static function method_labels(): array {
 		return array(
-			'card'   => __( 'Card', 'compound-woocommerce' ),
-			'ach'    => __( 'Bank transfer (ACH)', 'compound-woocommerce' ),
-			'crypto' => __( 'Cryptocurrency', 'compound-woocommerce' ),
+			'card'        => __( 'Card', 'compound-woocommerce' ),
+			'ach'         => __( 'Bank transfer (ACH)', 'compound-woocommerce' ),
+			// Open banking: the customer authorises the debit inside their own bank, so no
+			// account number is entered on this site at all.
+			'pay_by_bank' => __( 'Pay by bank', 'compound-woocommerce' ),
+			'crypto'      => __( 'Cryptocurrency', 'compound-woocommerce' ),
 		);
 	}
 
@@ -111,6 +114,14 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 		return self::enabled_methods( $this->settings );
 	}
 
+	/** The email this checkout is for, when it is already known (logged-in or posted). */
+	private function checkout_email(): string {
+		if ( is_user_logged_in() ) {
+			return (string) wp_get_current_user()->user_email;
+		}
+		return WC()->customer ? (string) WC()->customer->get_billing_email() : '';
+	}
+
 	/**
 	 * Never offer Compound at checkout with zero rails enabled - toggling every method off is
 	 * equivalent to disabling the gateway, not an empty chooser.
@@ -141,6 +152,14 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 			$first = false;
 		}
 		echo '</fieldset>';
+		// Pay by bank needs the customer to link before placing the order, so its panel is
+		// rendered with the rails rather than after submission. Hidden until the rail is
+		// chosen; the shared script handles that.
+		if ( array_key_exists( WC_Compound_PayByBank::METHOD, $methods ) ) {
+			echo '<div class="compound-pbb-panel" data-method="' . esc_attr( WC_Compound_PayByBank::METHOD ) . '">';
+			WC_Compound_PayByBank::render_field( $this->checkout_email() );
+			echo '</div>';
+		}
 		if ( 'sandbox' === $this->get_option( 'environment' ) ) {
 			wp_enqueue_script(
 				'wc-compound-sandbox-checkout',
@@ -412,6 +431,19 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 	 * @return array|WP_Error
 	 */
 	private function payment_method( string $method ) {
+		// Pay by bank has no sandbox card-number equivalent: the token is always a real
+		// provider-issued customer reference produced by the linking flow, in both
+		// environments, because there is nothing else it could be.
+		if ( WC_Compound_PayByBank::METHOD === $method ) {
+			// Its own field, deliberately not compound_payment_token: the card rail reads that
+			// one in live mode, and a bank reference must never be picked up as a card token.
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing -- WooCommerce verifies the checkout nonce before process_payment runs.
+			$token = isset( $_POST['compound_pbb_token'] ) ? sanitize_text_field( wp_unslash( $_POST['compound_pbb_token'] ) ) : '';
+			if ( '' === $token ) {
+				return new WP_Error( 'compound_bank_link_required', __( 'Link your bank account before placing the order.', 'compound-woocommerce' ) );
+			}
+			return array( 'bank_account_token' => $token );
+		}
 		if ( 'sandbox' !== $this->get_option( 'environment' ) ) {
 			// WooCommerce verifies the checkout nonce before process_payment runs, so this
 			// is not an unauthenticated read. Kept on one line because phpcs:ignore applies

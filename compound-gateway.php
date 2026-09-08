@@ -3,7 +3,7 @@
  * Plugin Name:       Compound for WooCommerce
  * Plugin URI:        https://compound.dev
  * Description:       Route WooCommerce checkout and orders through Compound - payments orchestration + pharmacy fulfillment for DTC peptide brands.
- * Version:           0.1.23
+ * Version:           0.1.24
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            Compound
@@ -16,9 +16,10 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'COMPOUND_WC_VERSION', '0.1.23' );
+define( 'COMPOUND_WC_VERSION', '0.1.24' );
 define( 'COMPOUND_WC_FILE', __FILE__ );
 define( 'COMPOUND_WC_PATH', plugin_dir_path( __FILE__ ) );
+define( 'COMPOUND_WC_URL', plugin_dir_url( __FILE__ ) );
 
 /**
  * Boot the plugin once all plugins are loaded, so we can check WooCommerce is present.
@@ -45,7 +46,27 @@ add_action(
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-order-admin.php';
 		( new WC_Compound_Order_Admin() )->register();
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-styles.php';
+		require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-paybybank.php';
 		( new WC_Compound_Styles() )->register();
+		( new WC_Compound_PayByBank() )->register();
+
+		// The pay-by-bank script is only enqueued on checkout, and only loads the provider's
+		// SDK when that rail is actually chosen, so a card checkout never fetches it.
+		add_action(
+			'wp_enqueue_scripts',
+			function () {
+				if ( ! function_exists( 'is_checkout' ) || ! is_checkout() ) {
+					return;
+				}
+				wp_enqueue_script(
+					'compound-paybybank',
+					COMPOUND_WC_URL . 'assets/js/paybybank.js',
+					array(),
+					COMPOUND_WC_VERSION,
+					true
+				);
+			}
+		);
 
 		// Telemedicine: health intake collected as part of registration itself (an account
 		// can't be created without it once at least one product is gated), and a consult

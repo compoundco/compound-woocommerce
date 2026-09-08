@@ -95,6 +95,62 @@ class WC_Compound_API {
 	 * @param array  $payment_method  Opaque, tokenized funding-source data.
 	 * @return array|WP_Error Decoded charge on success.
 	 */
+	/**
+	 * Starts a pay-by-bank linking session. Compound creates the session with its own (or the
+	 * brand's) processor credential and returns a URL for the provider's hosted flow; this
+	 * plugin never holds a processor credential and never sees an account number.
+	 *
+	 * @param string $first_name   Customer first name.
+	 * @param string $last_name    Customer last name.
+	 * @param string $email        Customer email.
+	 * @param string $redirect_url Where the customer returns after linking. Must be https.
+	 * @param int    $amount_cents Optional order amount, shown on the provider's pay screen.
+	 * @return array|WP_Error {session_url}
+	 */
+	public function paybybank_session( string $first_name, string $last_name, string $email, string $redirect_url, int $amount_cents = 0 ) {
+		$body = array(
+			'first_name'   => $first_name,
+			'last_name'    => $last_name,
+			'email'        => $email,
+			'redirect_url' => $redirect_url,
+		);
+		if ( $amount_cents > 0 ) {
+			$body['amount'] = $amount_cents;
+		}
+		return $this->post( $this->api_base . '/v1/paybybank/sessions', $body, '' );
+	}
+
+	/**
+	 * Records the bank link after the customer returns from their bank. Compound verifies the
+	 * customer id against the provider before storing it, so a wrong or forged id is refused
+	 * there rather than trusted here.
+	 *
+	 * @param string $email       Customer email the link belongs to.
+	 * @param string $customer_id Provider customer id, from the redirect's query parameters.
+	 * @return array|WP_Error {linked, status, bank_account_token, bank_name, account_last4}
+	 */
+	public function paybybank_link( string $email, string $customer_id ) {
+		return $this->post(
+			$this->api_base . '/v1/paybybank/link',
+			array(
+				'email'       => $email,
+				'customer_id' => $customer_id,
+			),
+			''
+		);
+	}
+
+	/**
+	 * Whether this customer already has a usable linked bank account, so a returning customer
+	 * can pay without being sent back through their bank.
+	 *
+	 * @param string $email Customer email.
+	 * @return array|WP_Error {linked, status, bank_account_token, bank_name, account_last4}
+	 */
+	public function paybybank_customer( string $email ) {
+		return $this->get( $this->api_base . '/v1/paybybank/customers/' . rawurlencode( $email ) );
+	}
+
 	public function create_charge( string $order_id, int $amount_cents, string $idempotency_key, string $method_type = 'card', array $payment_method = array() ) {
 		$body = array(
 			'order_id'    => $order_id,
