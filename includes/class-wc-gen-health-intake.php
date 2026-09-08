@@ -97,24 +97,39 @@ class WC_Gen_Health_Intake {
 		if ( ! WC_Gen_Health_Settings::is_active() || empty( $this->gated_products() ) ) {
 			return $errors;
 		}
-		$required = array(
-			'product_sku'   => __( 'Choose what you are interested in.', 'compound-woocommerce' ),
-			'first_name'    => __( 'First name is required.', 'compound-woocommerce' ),
-			'last_name'     => __( 'Last name is required.', 'compound-woocommerce' ),
-			'phone'         => __( 'Phone is required.', 'compound-woocommerce' ),
-			'date_of_birth' => __( 'Date of birth is required.', 'compound-woocommerce' ),
-			'street1'       => __( 'Street address is required.', 'compound-woocommerce' ),
-			'city'          => __( 'City is required.', 'compound-woocommerce' ),
-			'state'         => __( 'State is required.', 'compound-woocommerce' ),
-			'zip'           => __( 'ZIP is required.', 'compound-woocommerce' ),
-		);
-		foreach ( $required as $field => $message ) {
-			// phpcs:ignore WordPress.Security.NonceVerification.Missing -- WooCommerce verifies woocommerce-register-nonce before calling this filter (WC_Form_Handler::process_registration()).
-			$value = isset( $_POST[ $field ] ) ? sanitize_text_field( wp_unslash( $_POST[ $field ] ) ) : '';
-			if ( '' === $value ) {
-				$errors->add( 'gen_health_' . $field, $message );
-			}
+		// product_sku is its own field; every other answer arrives under answers[<key>], and
+		// which of them are required is the brand's configuration rather than a list hardcoded
+		// here. Falls back to the built-in identity set when Compound cannot be reached, which
+		// matches exactly what render_fields() drew on the same page load.
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- WooCommerce verifies woocommerce-register-nonce before calling this filter (WC_Form_Handler::process_registration()).
+		if ( empty( $_POST['product_sku'] ) ) {
+			$errors->add( 'gen_health_product_sku', __( 'Choose what you are interested in.', 'compound-woocommerce' ) );
 		}
+
+		$questions = WC_Gen_Health_Settings::intake_questions();
+		if ( empty( $questions ) ) {
+			$questions = self::fallback_questions();
+		}
+		$answers = self::sanitized_answers();
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		foreach ( $questions as $question ) {
+			if ( empty( $question['required'] ) ) {
+				continue;
+			}
+			$key   = isset( $question['question_key'] ) ? (string) $question['question_key'] : '';
+			$value = isset( $answers[ $key ] ) ? sanitize_text_field( (string) $answers[ $key ] ) : '';
+			if ( '' === $key || '' !== $value ) {
+				continue;
+			}
+			$label = isset( $question['label'] ) ? (string) $question['label'] : $key;
+			$errors->add(
+				'gen_health_' . $key,
+				/* translators: %s: the intake question's label, as configured by the brand. */
+				sprintf( __( '%s is required.', 'compound-woocommerce' ), $label )
+			);
+		}
+
 		return $errors;
 	}
 
@@ -153,6 +168,14 @@ class WC_Gen_Health_Intake {
 		$consults = WC_Gen_Health_Settings::api()->telemedicine_consults( $email );
 		if ( ! is_wp_error( $consults ) && ! empty( $consults['consults'] ) ) {
 			echo '<p>' . esc_html__( 'Your health intake is on file.', 'compound-woocommerce' ) . '</p>';
+			// A live visit is the one thing the patient still has to act on, so it goes here
+			// rather than only on the page they saw once right after submitting.
+			$visit = WC_Compound_Visit::joinable_for( $email );
+			if ( null !== $visit ) {
+				WC_Compound_Visit::render_join( $visit );
+			} elseif ( 'pending' === ( $consults['consults'][0]['status'] ?? '' ) ) {
+				WC_Compound_Visit::render_async_notice();
+			}
 			return;
 		}
 
@@ -196,18 +219,18 @@ class WC_Gen_Health_Intake {
 			</select>
 		</p>
 
-		<p class="compound-wc-field"><label><?php esc_html_e( 'First name', 'compound-woocommerce' ); ?><br /><input type="text" name="first_name" required /></label></p>
-		<p class="compound-wc-field"><label><?php esc_html_e( 'Last name', 'compound-woocommerce' ); ?><br /><input type="text" name="last_name" required /></label></p>
-		<p class="compound-wc-field"><label><?php esc_html_e( 'Phone', 'compound-woocommerce' ); ?><br /><input type="tel" name="phone" required /></label></p>
-		<p class="compound-wc-field"><label><?php esc_html_e( 'Date of birth', 'compound-woocommerce' ); ?><br /><input type="date" name="date_of_birth" required /></label></p>
-		<p class="compound-wc-field"><label><?php esc_html_e( 'Street address', 'compound-woocommerce' ); ?><br /><input type="text" name="street1" required /></label></p>
-		<p class="compound-wc-field"><label><?php esc_html_e( 'City', 'compound-woocommerce' ); ?><br /><input type="text" name="city" required /></label></p>
-		<p class="compound-wc-field"><label><?php esc_html_e( 'State', 'compound-woocommerce' ); ?><br /><input type="text" name="state" maxlength="2" required /></label></p>
-		<p class="compound-wc-field"><label><?php esc_html_e( 'ZIP', 'compound-woocommerce' ); ?><br /><input type="text" name="zip" required /></label></p>
-		<p class="compound-wc-field"><label><?php esc_html_e( 'Known allergies (comma-separated, optional)', 'compound-woocommerce' ); ?><br /><input type="text" name="allergies" /></label></p>
-		<p class="compound-wc-field"><label><?php esc_html_e( 'Current medications (comma-separated, optional)', 'compound-woocommerce' ); ?><br /><input type="text" name="current_medications" /></label></p>
-		<p class="compound-wc-field"><label><?php esc_html_e( 'Medical conditions (comma-separated, optional)', 'compound-woocommerce' ); ?><br /><input type="text" name="medical_conditions" /></label></p>
 		<?php
+		// Rendered from the brand's configured questions (Compound owns that configuration, and
+		// the brand edits it in the Compound portal). If Compound cannot be reached, fall back
+		// to the built-in identity set rather than showing an empty form: an intake nobody can
+		// complete is worse than one that has not picked up a recent edit.
+		$questions = WC_Gen_Health_Settings::intake_questions();
+		if ( empty( $questions ) ) {
+			$questions = self::fallback_questions();
+		}
+		foreach ( $questions as $question ) {
+			self::render_question( $question );
+		}
 	}
 
 	public function handle_submit(): void {
@@ -229,7 +252,9 @@ class WC_Gen_Health_Intake {
 			$this->redirect_with_error( $result->get_error_message() );
 		}
 
-		wp_safe_redirect( wc_get_account_endpoint_url( self::ENDPOINT ) );
+		// Straight back to the tab that carries the join link, rather than a dead end that
+		// leaves a waiting clinician on one side and a confused patient on the other.
+		wp_safe_redirect( add_query_arg( 'compound_intake', 'submitted', wc_get_account_endpoint_url( self::ENDPOINT ) ) );
 		exit;
 	}
 
@@ -283,24 +308,17 @@ class WC_Gen_Health_Intake {
 	 * @return array
 	 */
 	private function payload_from_post( string $email, string $product_sku, string $consult_type, string $consult_kind ): array {
+		// Answers are posted keyed by the brand's own question keys, so a brand adding or
+		// renaming a question needs no change here. Compound maps the keys it knows onto the
+		// provider's fields and forwards the rest to the clinician as labelled free text.
+		$answers = self::sanitized_answers();
+
 		return array(
-			'customer'      => array( 'email' => $email ),
-			'product_sku'   => $product_sku,
-			'consult_type'  => $consult_type,
-			'consult_kind'  => $consult_kind,
-			'first_name'    => sanitize_text_field( wp_unslash( $_POST['first_name'] ?? '' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
-			'last_name'     => sanitize_text_field( wp_unslash( $_POST['last_name'] ?? '' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
-			'phone'         => sanitize_text_field( wp_unslash( $_POST['phone'] ?? '' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
-			'date_of_birth' => sanitize_text_field( wp_unslash( $_POST['date_of_birth'] ?? '' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
-			'address'       => array(
-				'street1' => sanitize_text_field( wp_unslash( $_POST['street1'] ?? '' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
-				'city'    => sanitize_text_field( wp_unslash( $_POST['city'] ?? '' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
-				'state'   => sanitize_text_field( wp_unslash( $_POST['state'] ?? '' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
-				'zip'     => sanitize_text_field( wp_unslash( $_POST['zip'] ?? '' ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
-			),
-			'allergies'     => $this->csv_to_list( sanitize_text_field( wp_unslash( $_POST['allergies'] ?? '' ) ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
-			'medications'   => $this->csv_to_list( sanitize_text_field( wp_unslash( $_POST['current_medications'] ?? '' ) ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
-			'conditions'    => $this->csv_to_list( sanitize_text_field( wp_unslash( $_POST['medical_conditions'] ?? '' ) ) ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			'customer'     => array( 'email' => $email ),
+			'product_sku'  => $product_sku,
+			'consult_type' => $consult_type,
+			'consult_kind' => $consult_kind,
+			'answers'      => $answers,
 		);
 	}
 
@@ -336,5 +354,151 @@ class WC_Gen_Health_Intake {
 			return array();
 		}
 		return array_values( array_filter( array_map( 'trim', explode( ',', $clean ) ) ) );
+	}
+
+	/**
+	 * One configured question. The field name is the question's key, so answers post back
+	 * under the same keys Compound stores them against and nothing is mapped by position.
+	 *
+	 * @param array $question Question row as Compound returned it.
+	 */
+	private static function render_question( array $question ): void {
+		$key = isset( $question['question_key'] ) ? (string) $question['question_key'] : '';
+		if ( '' === $key ) {
+			return;
+		}
+		$label    = isset( $question['label'] ) ? (string) $question['label'] : $key;
+		$type     = isset( $question['input_type'] ) ? (string) $question['input_type'] : 'text';
+		$help     = isset( $question['help_text'] ) ? (string) $question['help_text'] : '';
+		$required = ! empty( $question['required'] );
+		$options  = ( isset( $question['options'] ) && is_array( $question['options'] ) ) ? $question['options'] : array();
+		$name     = 'answers[' . $key . ']';
+		?>
+		<p class="compound-wc-field">
+			<label>
+				<?php echo esc_html( $label ); ?><br />
+				<?php if ( 'textarea' === $type ) : ?>
+					<textarea name="<?php echo esc_attr( $name ); ?>" rows="3" <?php echo $required ? 'required' : ''; ?>></textarea>
+				<?php elseif ( 'select' === $type ) : ?>
+					<select name="<?php echo esc_attr( $name ); ?>" <?php echo $required ? 'required' : ''; ?>>
+						<option value=""><?php esc_html_e( 'Choose...', 'compound-woocommerce' ); ?></option>
+						<?php foreach ( $options as $option ) : ?>
+							<option value="<?php echo esc_attr( (string) $option ); ?>"><?php echo esc_html( (string) $option ); ?></option>
+						<?php endforeach; ?>
+					</select>
+				<?php elseif ( 'checkbox' === $type ) : ?>
+					<input type="checkbox" name="<?php echo esc_attr( $name ); ?>" value="yes" <?php echo $required ? 'required' : ''; ?> />
+				<?php else : ?>
+					<input type="<?php echo esc_attr( self::html_input_type( $type ) ); ?>" name="<?php echo esc_attr( $name ); ?>" <?php echo 'state' === $key ? 'maxlength="2"' : ''; ?> <?php echo $required ? 'required' : ''; ?> />
+				<?php endif; ?>
+			</label>
+			<?php if ( '' !== $help ) : ?>
+				<span class="compound-wc-field__help"><?php echo esc_html( $help ); ?></span>
+			<?php endif; ?>
+		</p>
+		<?php
+	}
+
+	/**
+	 * Configured answer types mapped to HTML input types. Anything unrecognised renders as
+	 * plain text rather than as an attribute the browser would not understand.
+	 *
+	 * @param string $type Configured answer type.
+	 */
+	private static function html_input_type( string $type ): string {
+		$allowed = array( 'text', 'tel', 'email', 'date', 'number' );
+		return in_array( $type, $allowed, true ) ? $type : 'text';
+	}
+
+	/**
+	 * The built-in question set, used only when Compound's configuration cannot be read. It
+	 * mirrors the identity fields every provider requires, so a fallback intake is still one
+	 * that can actually be submitted.
+	 *
+	 * @return array[]
+	 */
+	private static function fallback_questions(): array {
+		return array(
+			array(
+				'question_key' => 'first_name',
+				'label'        => __( 'First name', 'compound-woocommerce' ),
+				'input_type'   => 'text',
+				'required'     => true,
+			),
+			array(
+				'question_key' => 'last_name',
+				'label'        => __( 'Last name', 'compound-woocommerce' ),
+				'input_type'   => 'text',
+				'required'     => true,
+			),
+			array(
+				'question_key' => 'date_of_birth',
+				'label'        => __( 'Date of birth', 'compound-woocommerce' ),
+				'input_type'   => 'date',
+				'required'     => true,
+			),
+			array(
+				'question_key' => 'phone',
+				'label'        => __( 'Phone', 'compound-woocommerce' ),
+				'input_type'   => 'tel',
+				'required'     => true,
+			),
+			array(
+				'question_key' => 'street1',
+				'label'        => __( 'Street address', 'compound-woocommerce' ),
+				'input_type'   => 'text',
+				'required'     => true,
+			),
+			array(
+				'question_key' => 'city',
+				'label'        => __( 'City', 'compound-woocommerce' ),
+				'input_type'   => 'text',
+				'required'     => true,
+			),
+			array(
+				'question_key' => 'state',
+				'label'        => __( 'State', 'compound-woocommerce' ),
+				'input_type'   => 'text',
+				'required'     => true,
+			),
+			array(
+				'question_key' => 'zip',
+				'label'        => __( 'ZIP', 'compound-woocommerce' ),
+				'input_type'   => 'text',
+				'required'     => true,
+			),
+		);
+	}
+
+	/**
+	 * The posted answers, sanitized per element. Shared by the registration-time validation
+	 * and the payload builder so both read exactly the same values, and so the array is
+	 * sanitized in one place rather than at each use.
+	 *
+	 * Callers have already had a nonce verified for them: WooCommerce checks
+	 * woocommerce-register-nonce before the registration filter runs, and handle_submit()
+	 * calls check_admin_referer() before anything else.
+	 *
+	 * @return array<string, string|string[]>
+	 */
+	private static function sanitized_answers(): array {
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- see the doc comment above.
+		if ( ! isset( $_POST['answers'] ) || ! is_array( $_POST['answers'] ) ) {
+			return array();
+		}
+		// Sanitized at the boundary with map_deep, so nothing unsanitized is ever held, even
+		// briefly. sanitize_textarea_field rather than sanitize_text_field because a long-text
+		// answer should keep its line breaks on the way to the clinician.
+		$raw = map_deep( wp_unslash( $_POST['answers'] ), 'sanitize_textarea_field' );
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+		$out = array();
+		foreach ( $raw as $key => $value ) {
+			$key = sanitize_key( (string) $key );
+			if ( '' === $key ) {
+				continue;
+			}
+			$out[ $key ] = is_array( $value ) ? array_values( array_filter( $value ) ) : (string) $value;
+		}
+		return $out;
 	}
 }

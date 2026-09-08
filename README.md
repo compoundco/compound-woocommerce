@@ -197,6 +197,18 @@ checkout line item is tagged with a consult type and kind.
 
 - **Consult type override** (Product Data -> General): a product's SKU is its consult type by
   default; set this only if a product needs a different one.
+- **Intake questions** are configured in the Compound admin portal, not here. The plugin
+  fetches them (`GET /v1/telemedicine/intake-form`, cached for 15 minutes like the
+  telemedicine toggle) and renders whatever comes back, so a brand changing a question
+  changes its checkout with no plugin release. Answers post back keyed by `question_key`.
+  If Compound cannot be reached the plugin falls back to the built-in identity fields rather
+  than rendering an empty form: an intake nobody can complete is worse than one that has not
+  picked up a recent edit.
+- **Joining a visit.** When a consult comes back with a meeting link, the plugin shows a
+  "Join your visit" button on the order-received page and in the My Account tab; when it does
+  not, it says a clinician is reviewing the intake. The plugin is never told which provider
+  is behind either case. The visit opens in a new tab, not an iframe: providers serve their
+  meeting pages with `X-Frame-Options: SAMEORIGIN`, so a cross-origin embed is refused.
 - **Consult kind** (Product Data -> General): whether this product's consult is a
   **good faith exam** or an **exam + prescription**. Defaults to exam + prescription. The two
   are not interchangeable, and Compound routes on the difference: a good faith exam produces

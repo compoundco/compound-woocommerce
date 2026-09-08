@@ -3,7 +3,7 @@
  * Plugin Name:       Compound for WooCommerce
  * Plugin URI:        https://compound.dev
  * Description:       Route WooCommerce checkout and orders through Compound - payments orchestration + pharmacy fulfillment for DTC peptide brands.
- * Version:           0.1.22
+ * Version:           0.1.23
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            Compound
@@ -16,7 +16,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'COMPOUND_WC_VERSION', '0.1.22' );
+define( 'COMPOUND_WC_VERSION', '0.1.23' );
 define( 'COMPOUND_WC_FILE', __FILE__ );
 define( 'COMPOUND_WC_PATH', plugin_dir_path( __FILE__ ) );
 
@@ -62,6 +62,7 @@ add_action(
 		// by the active theme (inc/access-control.php), not this plugin.
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-settings.php';
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-product-meta.php';
+		require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-visit.php';
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-intake.php';
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-profile-admin.php';
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-dev-tools.php';
@@ -78,6 +79,7 @@ add_action(
 			}
 		);
 		( new WC_Gen_Health_Product_Meta() )->register();
+		( new WC_Compound_Visit() )->register();
 		( new WC_Gen_Health_Intake() )->register();
 		( new WC_Gen_Health_Profile_Admin() )->register();
 		// Sandbox-only manual approve/deny controls, calling Compound's own dev/resolve
