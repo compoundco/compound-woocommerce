@@ -225,6 +225,12 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 				'label'   => __( 'Cryptocurrency', 'compound-woocommerce' ),
 				'default' => 'yes',
 			),
+			'custom_css'     => array(
+				'title'       => __( 'Custom CSS', 'compound-woocommerce' ),
+				'type'        => 'textarea',
+				'description' => __( 'Applied on every page this plugin renders anything on (checkout, the telemedicine intake form) - use it to match your site\'s look. Printed after the plugin\'s own base styles, so it can override them.', 'compound-woocommerce' ),
+				'css'         => 'width:100%;height:160px;font-family:monospace;',
+			),
 		);
 	}
 
@@ -271,7 +277,12 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 			return array( 'result' => 'failure' );
 		}
 
-		// Build line items as {sku, quantity} ONLY. A missing SKU can't be fulfilled.
+		// Build line items as {sku, quantity} ONLY - plus consult_type/consult_kind when
+		// telemedicine is on,
+		// so Compound can link/auto-reup a consult server-side. Telemedicine has no per-product
+		// opt-in: the brand-level toggle (Compound admin portal) is the only gate - every
+		// product is included once it's on (class-wc-gen-health-product-meta.php). A missing
+		// SKU can't be fulfilled.
 		$line_items = array();
 		foreach ( $order->get_items() as $item ) {
 			$product = $item->get_product();
@@ -280,10 +291,17 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 				wc_add_notice( __( 'A product in your cart is not set up for Compound fulfillment. Please contact support.', 'compound-woocommerce' ), 'error' );
 				return array( 'result' => 'failure' );
 			}
-			$line_items[] = array(
+			$line_item = array(
 				'sku'      => $sku,
 				'quantity' => (int) $item->get_quantity(),
 			);
+			if ( $product && WC_Gen_Health_Settings::is_active() ) {
+				$line_item['consult_type'] = WC_Gen_Health_Product_Meta::consult_type( $product );
+				// Compound routes on the kind as well as the type, and the two consult kinds
+				// are not interchangeable, so send it rather than letting the API assume.
+				$line_item['consult_kind'] = WC_Gen_Health_Product_Meta::consult_kind( $product );
+			}
+			$line_items[] = $line_item;
 		}
 
 		$amount_cents = (int) round( (float) $order->get_total() * 100 );
@@ -307,7 +325,11 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 			$reference,
 			'wc-order-' . $reference,
 			$meta,
-			(string) $order->get_customer_note()
+			(string) $order->get_customer_note(),
+			// get_edit_order_url() resolves the correct wp-admin URL regardless of whether
+			// this store uses HPOS or legacy post-based order storage - never build that URL
+			// by hand on the Compound side, where neither piece of information is known.
+			$order->get_edit_order_url()
 		);
 		if ( is_wp_error( $created ) ) {
 			WC_Compound_Sentry::report(

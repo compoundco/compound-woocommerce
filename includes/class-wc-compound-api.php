@@ -32,10 +32,12 @@ class WC_Compound_API {
 	 * @param string $idempotency_key  Stable key so retries don't duplicate the order.
 	 * @param array  $meta             Attribution + discount recorded on the order:
 	 *                                 channel, attribution (assoc), coupon_code, discount_cents.
-	 * @param string $note             Customer-provided checkout note (optional).
+	 * @param string $note                  Customer-provided checkout note (optional).
+	 * @param string $storefront_order_url  Deep link to this order in wp-admin (optional) -
+	 *                                      shown as a link in the Compound brand portal.
 	 * @return array|WP_Error Decoded order on success.
 	 */
-	public function create_order( array $line_items, int $amount_cents, array $customer, array $shipping_address, string $order_reference, string $idempotency_key, array $meta = array(), string $note = '' ) {
+	public function create_order( array $line_items, int $amount_cents, array $customer, array $shipping_address, string $order_reference, string $idempotency_key, array $meta = array(), string $note = '', string $storefront_order_url = '' ) {
 		$body = array(
 			'amount'           => $amount_cents,
 			'currency'         => 'usd',
@@ -51,6 +53,9 @@ class WC_Compound_API {
 		// Omit entirely rather than sending an empty string - '' isn't the same as "no note".
 		if ( '' !== $note ) {
 			$body['note'] = $note;
+		}
+		if ( '' !== $storefront_order_url ) {
+			$body['storefront_order_url'] = $storefront_order_url;
 		}
 		return $this->post( $this->api_base . '/v1/orders', $body, $idempotency_key );
 	}
@@ -127,6 +132,124 @@ class WC_Compound_API {
 			$body,
 			$idempotency_key
 		);
+	}
+
+	/**
+	 * Whether telemedicine is enabled for this brand (set in the Compound admin portal -
+	 * this plugin never configures it). Callers should cache this (see
+	 * WC_Gen_Health_Settings::is_active()) rather than calling it on every page load.
+	 *
+	 * @return array|WP_Error {enabled: bool}
+	 */
+	public function telemedicine_config() {
+		return $this->get( $this->api_base . '/v1/telemedicine/config' );
+	}
+
+	/**
+	 * Submit a health intake and start a consult. Compound forwards this to its telehealth
+	 * provider and returns only a pointer + status - nothing sent here is stored back on this
+	 * request beyond that pointer (see the telemedicine plan). Never blocks or reverses
+	 * account creation on failure - the caller decides how to handle a WP_Error.
+	 *
+	 * @param array  $payload         {customer:{email}, product_sku, consult_type, first_name,
+	 *                                 last_name, phone, date_of_birth, address, allergies?,
+	 *                                 medications?, conditions?}.
+	 * @param string $idempotency_key Stable key so a retry can't start a second consult.
+	 * @return array|WP_Error {consult_id, status}
+	 */
+	public function telemedicine_intake( array $payload, string $idempotency_key ) {
+		return $this->post( $this->api_base . '/v1/telemedicine/intake', $payload, $idempotency_key );
+	}
+
+	/**
+	 * A customer's consults (status + fills remaining), most recent first.
+	 *
+	 * @param string $email Customer's account email.
+	 * @return array|WP_Error {consults: array[]}
+	 */
+	public function telemedicine_consults( string $email ) {
+		return $this->get( $this->api_base . '/v1/telemedicine/consults?email=' . rawurlencode( $email ) );
+	}
+
+	/**
+	 * Live detail for one consult (medication, prescriber, prescription file link) - never
+	 * cached on either side, matching how the prescription file itself is always fetched fresh.
+	 *
+	 * @param string $consult_id Compound consult id.
+	 * @return array|WP_Error
+	 */
+	public function telemedicine_consult_detail( string $consult_id ) {
+		return $this->get( $this->api_base . '/v1/telemedicine/consults/' . rawurlencode( $consult_id ) . '/detail' );
+	}
+
+	/**
+	 * Sandbox-only: resolve a consult by hand instead of waiting on real clinical review -
+	 * exercises the exact same fills/refund logic the real poll uses. Compound itself refuses
+	 * this outside sandbox.
+	 *
+	 * @param string $consult_id Compound consult id.
+	 * @param string $outcome    'approved' or 'denied'.
+	 * @param int    $refills    Refills to grant on approval (ignored for a denial).
+	 * @return array|WP_Error
+	 */
+	public function telemedicine_dev_resolve( string $consult_id, string $outcome, int $refills = 2 ) {
+		$response = wp_remote_post(
+			$this->api_base . '/v1/telemedicine/consults/' . rawurlencode( $consult_id ) . '/dev/resolve',
+			array(
+				'timeout' => 20,
+				'headers' => array(
+					'Content-Type'  => 'application/json',
+					'Authorization' => 'Bearer ' . $this->api_key,
+				),
+				'body'    => wp_json_encode(
+					array(
+						'outcome' => $outcome,
+						'refills' => $refills,
+					)
+				),
+			)
+		);
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+		$code    = (int) wp_remote_retrieve_response_code( $response );
+		$decoded = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( $code < 200 || $code >= 300 ) {
+			$message = is_array( $decoded ) && isset( $decoded['error'] )
+				? ( is_array( $decoded['error'] ) ? ( $decoded['error']['message'] ?? 'Request failed.' ) : $decoded['error'] )
+				: sprintf( 'Compound API returned %d.', $code );
+			return new WP_Error( 'compound_api_error', $message, array( 'status' => $code ) );
+		}
+		return is_array( $decoded ) ? $decoded : array();
+	}
+
+	/**
+	 * GET with the brand API key. Same decode/error handling as post().
+	 *
+	 * @param string $url Absolute endpoint URL.
+	 * @return array|WP_Error
+	 */
+	private function get( string $url ) {
+		$response = wp_remote_get(
+			$url,
+			array(
+				'timeout' => 20,
+				'headers' => array( 'Authorization' => 'Bearer ' . $this->api_key ),
+			)
+		);
+		if ( is_wp_error( $response ) ) {
+			WC_Compound_Sentry::report( 'request failed: ' . $response->get_error_message(), array( 'url' => $url ) );
+			return $response;
+		}
+		$code    = (int) wp_remote_retrieve_response_code( $response );
+		$decoded = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( $code < 200 || $code >= 300 ) {
+			$message = is_array( $decoded ) && isset( $decoded['error'] )
+				? ( is_array( $decoded['error'] ) ? ( $decoded['error']['message'] ?? 'Request failed.' ) : $decoded['error'] )
+				: sprintf( 'Compound API returned %d.', $code );
+			return new WP_Error( 'compound_api_error', $message, array( 'status' => $code ) );
+		}
+		return is_array( $decoded ) ? $decoded : array();
 	}
 
 	/**
