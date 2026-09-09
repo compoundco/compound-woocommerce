@@ -46,13 +46,36 @@ class WC_Gen_Health_Settings_Page extends WC_Settings_Page {
 			return;
 		}
 
+		// A refresh clears the cached reads so the next page load asks Compound again. Without
+		// this, a change made in the Compound dashboard is invisible here until the cache
+		// expires, which reads as the change not having worked.
+		if ( isset( $_GET['compound_refresh'] ) && check_admin_referer( 'compound_refresh' ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			WC_Gen_Health_Settings::clear_cache();
+			echo '<div class="notice notice-success inline"><p>'
+				. esc_html__( 'Refreshed from Compound.', 'compound-woocommerce' )
+				. '</p></div>';
+		}
+
 		$enabled = WC_Gen_Health_Settings::is_active();
 		echo '<p><strong>' . esc_html__( 'Status:', 'compound-woocommerce' ) . '</strong> ';
 		echo $enabled // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- static strings only.
 			? esc_html__( 'On', 'compound-woocommerce' )
 			: esc_html__( 'Off', 'compound-woocommerce' );
 		echo '</p>';
-		echo '<p>' . esc_html__( 'Turn telemedicine on or off, and manage which products require a consult, from your Compound dashboard.', 'compound-woocommerce' ) . '</p>';
+
+		$questions = WC_Gen_Health_Settings::intake_questions();
+		echo '<p>' . sprintf(
+			/* translators: %d: number of intake questions configured in the Compound dashboard. */
+			esc_html( _n( '%d intake question configured.', '%d intake questions configured.', count( $questions ), 'compound-woocommerce' ) ),
+			count( $questions )
+		) . '</p>';
+
+		echo '<p>' . esc_html__( 'Turn telemedicine on or off, and edit the intake questions, from your Compound dashboard. This store caches both; refresh to pick up a change straight away.', 'compound-woocommerce' ) . '</p>';
+		printf(
+			'<p><a class="button" href="%s">%s</a></p>',
+			esc_url( wp_nonce_url( add_query_arg( 'compound_refresh', '1' ), 'compound_refresh' ) ),
+			esc_html__( 'Refresh from Compound', 'compound-woocommerce' )
+		);
 	}
 
 	public function save() {

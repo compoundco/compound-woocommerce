@@ -3,7 +3,7 @@
  * Plugin Name:       Compound for WooCommerce
  * Plugin URI:        https://compound.dev
  * Description:       Route WooCommerce checkout and orders through Compound - payments orchestration + pharmacy fulfillment for DTC peptide brands.
- * Version:           0.1.24
+ * Version:           0.1.25
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            Compound
@@ -16,7 +16,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'COMPOUND_WC_VERSION', '0.1.24' );
+define( 'COMPOUND_WC_VERSION', '0.1.25' );
 define( 'COMPOUND_WC_FILE', __FILE__ );
 define( 'COMPOUND_WC_PATH', plugin_dir_path( __FILE__ ) );
 define( 'COMPOUND_WC_URL', plugin_dir_url( __FILE__ ) );
@@ -48,6 +48,22 @@ add_action(
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-styles.php';
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-paybybank.php';
 		( new WC_Compound_Styles() )->register();
+
+		// A different API key can be a different brand, so cached brand-level reads (the
+		// telemedicine toggle, the intake questions) must not survive a credential change.
+		add_action(
+			'update_option_woocommerce_compound_settings',
+			function ( $old_value, $new_value ) {
+				$changed = ( $old_value['api_key'] ?? '' ) !== ( $new_value['api_key'] ?? '' )
+					|| ( $old_value['api_base'] ?? '' ) !== ( $new_value['api_base'] ?? '' )
+					|| ( $old_value['environment'] ?? '' ) !== ( $new_value['environment'] ?? '' );
+				if ( $changed && class_exists( 'WC_Gen_Health_Settings' ) ) {
+					WC_Gen_Health_Settings::clear_cache();
+				}
+			},
+			10,
+			2
+		);
 		( new WC_Compound_PayByBank() )->register();
 
 		// The pay-by-bank script is only enqueued on checkout, and only loads the provider's
