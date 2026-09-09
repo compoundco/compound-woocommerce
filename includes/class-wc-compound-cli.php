@@ -20,6 +20,26 @@ class WC_Compound_CLI {
 	 * @param array $args       Positional arguments. WP-CLI always passes these; unused.
 	 * @param array $assoc_args Associative arguments. WP-CLI always passes these; unused.
 	 */
+	/**
+	 * Drops this store's cached reads of the telemedicine toggle and the intake questions, so
+	 * the next page load asks Compound again.
+	 *
+	 * Both are cached to keep every registration page render from calling out to Compound.
+	 * That means a change made in the Compound dashboard is otherwise invisible here until the
+	 * cache expires, which is the fastest thing to trip over while testing.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp compound refresh
+	 *
+	 * @param array $args       Positional args (unused).
+	 * @param array $assoc_args Associative args (unused).
+	 */
+	public function refresh( $args, $assoc_args ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter
+		WC_Gen_Health_Settings::clear_cache();
+		WP_CLI::success( 'Cleared cached telemedicine settings and intake questions.' );
+	}
+
 	public function sync_coupons( $args, $assoc_args ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter
 		$settings = get_option( 'woocommerce_compound_settings', array() );
 		// Falls back to the pre-migration keys directly (rather than relying on the gateway's
