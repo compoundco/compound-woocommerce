@@ -48,6 +48,12 @@ class WC_Gen_Health_Settings {
 	public static function clear_cache(): void {
 		delete_transient( self::CACHE_TRANSIENT );
 		delete_transient( self::FORM_TRANSIENT );
+		// Per-SKU questionnaires are cached one transient per product, so they are dropped as
+		// a family. Missing this would leave the screening questions stale after a refresh
+		// that appeared to work, which is the exact confusion the refresh button exists to end.
+		if ( class_exists( 'WC_Compound_Screening' ) ) {
+			WC_Compound_Screening::clear_cache();
+		}
 	}
 
 	public static function api(): WC_Compound_API {
