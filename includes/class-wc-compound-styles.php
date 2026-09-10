@@ -27,9 +27,19 @@ class WC_Compound_Styles {
 		$custom   = is_array( $settings ) ? (string) ( $settings['custom_css'] ?? '' ) : '';
 
 		echo '<style id="compound-wc-styles">';
-		echo '.compound-wc-field input, .compound-wc-field select, .compound-wc-field textarea,';
-		echo '.compound-sandbox-fields input, .compound-sandbox-fields select {';
+		// Text-like controls stretch to their column. Checkboxes and radios are excluded:
+		// a 100%-wide checkbox is what pushed the box away from the left edge, and how far
+		// depended on whatever the active theme does with a stretched one.
+		echo '.compound-wc-field input:not([type="checkbox"]):not([type="radio"]),';
+		echo '.compound-wc-field select, .compound-wc-field textarea,';
+		echo '.compound-sandbox-fields input:not([type="checkbox"]):not([type="radio"]),';
+		echo '.compound-sandbox-fields select {';
 		echo 'width: 100%; max-width: 100%; box-sizing: border-box;';
+		echo '}';
+		// Question, then help text, then the box, each on its own line and hard left.
+		echo '.compound-wc-field__label, .compound-wc-field__help { display: block; }';
+		echo '.compound-wc-field--checkbox input[type="checkbox"] {';
+		echo 'width: auto; margin: 0.35em 0 0; display: block; float: none;';
 		echo '}';
 		echo '</style>' . "\n";
 
