@@ -229,6 +229,25 @@ class WC_Compound_API {
 	}
 
 	/**
+	 * The screening questionnaire a SKU asks when it goes in the cart, and the customer's
+	 * previous answers for it so a reorder is confirmed rather than retyped.
+	 *
+	 * Returns an empty question list rather than an error when the product has none, which is
+	 * the common case: most products need nothing beyond the registration intake.
+	 *
+	 * @param string $sku   The product's Compound SKU.
+	 * @param string $email Customer's account email, for the pre-fill. Optional.
+	 * @return array|WP_Error {questionnaire_id, name, questions: array[], previous_answers: array[]}
+	 */
+	public function telemedicine_questionnaire( string $sku, string $email = '' ) {
+		$url = $this->api_base . '/v1/telemedicine/questionnaire?product_sku=' . rawurlencode( $sku );
+		if ( '' !== $email ) {
+			$url .= '&email=' . rawurlencode( $email );
+		}
+		return $this->get( $url );
+	}
+
+	/**
 	 * A customer's consults (status + fills remaining), most recent first.
 	 *
 	 * @param string $email Customer's account email.

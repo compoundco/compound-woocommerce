@@ -41,6 +41,12 @@ class WC_Compound_Styles {
 		echo '.compound-wc-field--checkbox input[type="checkbox"] {';
 		echo 'width: auto; margin: 0.35em 0 0; display: block; float: none;';
 		echo '}';
+		// The screening block sits between the add-to-cart button and the rest of the product
+		// page, so it needs its own separation rather than inheriting whatever the theme does
+		// with a bare <div> there.
+		echo '.compound-screening { margin: 1em 0; }';
+		echo '.compound-screening__intro { font-weight: 600; margin: 0 0 0.75em; }';
+		echo '.compound-screening__field { margin: 0 0 1em; }';
 		echo '</style>' . "\n";
 
 		if ( '' !== trim( $custom ) ) {
