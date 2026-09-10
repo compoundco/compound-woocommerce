@@ -36,7 +36,11 @@ class WC_Compound_Screening {
 		add_filter( 'woocommerce_add_to_cart_validation', array( $this, 'require_answers' ), 10, 3 );
 		add_filter( 'woocommerce_add_cart_item_data', array( $this, 'attach_answers' ), 10, 2 );
 		add_filter( 'woocommerce_get_item_data', array( $this, 'show_answers_in_cart' ), 10, 2 );
-		add_action( 'woocommerce_after_add_to_cart_button', array( $this, 'render_fields' ) );
+		// Inside the add-to-cart form, above the quantity and the button. Inside matters: the
+		// answers have to post with the add. Above matters because the questions are a
+		// condition of adding, and a control you have to scroll past the button to find reads
+		// as optional.
+		add_action( 'woocommerce_before_add_to_cart_button', array( $this, 'render_fields' ) );
 		// Cart item data does not become order line meta on its own; this is what carries the
 		// answers across checkout so the gateway can send them.
 		add_action( 'woocommerce_checkout_create_order_line_item', array( $this, 'persist_answers' ), 10, 3 );
@@ -93,7 +97,7 @@ class WC_Compound_Screening {
 	}
 
 	/**
-	 * The questionnaire, under the add-to-cart button. Rendered inline rather than in a modal
+	 * The questionnaire, above the add-to-cart button. Rendered inline rather than in a modal
 	 * so it works without JavaScript and on a 360px screen, which is most of this traffic.
 	 */
 	public function render_fields(): void {
