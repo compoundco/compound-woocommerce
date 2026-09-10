@@ -3,7 +3,7 @@
  * Plugin Name:       Compound for WooCommerce
  * Plugin URI:        https://compound.dev
  * Description:       Route WooCommerce checkout and orders through Compound - payments orchestration + pharmacy fulfillment for DTC peptide brands.
- * Version:           0.1.26
+ * Version:           0.1.27
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            Compound
@@ -16,7 +16,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'COMPOUND_WC_VERSION', '0.1.26' );
+define( 'COMPOUND_WC_VERSION', '0.1.27' );
 define( 'COMPOUND_WC_FILE', __FILE__ );
 define( 'COMPOUND_WC_PATH', plugin_dir_path( __FILE__ ) );
 define( 'COMPOUND_WC_URL', plugin_dir_url( __FILE__ ) );
@@ -101,6 +101,7 @@ add_action(
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-product-meta.php';
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-visit.php';
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-intake.php';
+		require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-screening.php';
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-profile-admin.php';
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-dev-tools.php';
 		// class-wc-gen-health-settings-page.php is require_once'd HERE, inside the filter,
@@ -118,6 +119,9 @@ add_action(
 		( new WC_Gen_Health_Product_Meta() )->register();
 		( new WC_Compound_Visit() )->register();
 		( new WC_Gen_Health_Intake() )->register();
+		// Per-SKU screening, asked at add-to-cart. Separate from the registration intake
+		// above: that one establishes the patient, this one is about what is being bought.
+		( new WC_Compound_Screening() )->register();
 		( new WC_Gen_Health_Profile_Admin() )->register();
 		// Sandbox-only manual approve/deny controls, calling Compound's own dev/resolve
 		// endpoint so a simulated outcome exercises the real fills/refund path server-side.

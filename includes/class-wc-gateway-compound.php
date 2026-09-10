@@ -320,6 +320,14 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 				// are not interchangeable, so send it rather than letting the API assume.
 				$line_item['consult_kind'] = WC_Gen_Health_Product_Meta::consult_kind( $product );
 			}
+			// Screening answers collected when this line went in the cart. Sent raw: Compound
+			// resolves them against the saved questionnaire, supplying the labels and deciding
+			// which answers hold the order, so nothing here can relabel a question or claim an
+			// answer is unremarkable.
+			$answers = $item->get_meta( WC_Compound_Screening::ORDER_META );
+			if ( is_array( $answers ) && ! empty( $answers ) ) {
+				$line_item['intake_answers'] = $answers;
+			}
 			$line_items[] = $line_item;
 		}
 
