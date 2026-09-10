@@ -373,6 +373,35 @@ class WC_Gen_Health_Intake {
 		$required = ! empty( $question['required'] );
 		$options  = ( isset( $question['options'] ) && is_array( $question['options'] ) ) ? $question['options'] : array();
 		$name     = 'answers[' . $key . ']';
+
+		// A checkbox reads in a different order from a text field. The box is the answer, so
+		// whatever explains it has to come before the patient ticks it, not after: question,
+		// then help text, then the box. Every other type keeps help under the input, which is
+		// what the brand portal promises ("Optional, shown under the field").
+		if ( 'checkbox' === $type ) {
+			// The label cannot wrap the input here, because the question sits above the help
+			// text rather than beside the box. Associated by id instead, and the help text is
+			// referenced so a screen reader reads it as part of the question.
+			$id      = 'compound-q-' . $key;
+			$help_id = $id . '-help';
+			?>
+			<p class="compound-wc-field compound-wc-field--checkbox">
+				<label class="compound-wc-field__label" for="<?php echo esc_attr( $id ); ?>"><?php echo esc_html( $label ); ?></label>
+				<?php if ( '' !== $help ) : ?>
+					<span class="compound-wc-field__help" id="<?php echo esc_attr( $help_id ); ?>"><?php echo esc_html( $help ); ?></span>
+				<?php endif; ?>
+				<input
+					type="checkbox"
+					id="<?php echo esc_attr( $id ); ?>"
+					name="<?php echo esc_attr( $name ); ?>"
+					value="yes"
+					<?php echo '' !== $help ? 'aria-describedby="' . esc_attr( $help_id ) . '"' : ''; ?>
+					<?php echo $required ? 'required' : ''; ?>
+				/>
+			</p>
+			<?php
+			return;
+		}
 		?>
 		<p class="compound-wc-field">
 			<label>
@@ -386,8 +415,6 @@ class WC_Gen_Health_Intake {
 							<option value="<?php echo esc_attr( (string) $option ); ?>"><?php echo esc_html( (string) $option ); ?></option>
 						<?php endforeach; ?>
 					</select>
-				<?php elseif ( 'checkbox' === $type ) : ?>
-					<input type="checkbox" name="<?php echo esc_attr( $name ); ?>" value="yes" <?php echo $required ? 'required' : ''; ?> />
 				<?php else : ?>
 					<input type="<?php echo esc_attr( self::html_input_type( $type ) ); ?>" name="<?php echo esc_attr( $name ); ?>" <?php echo 'state' === $key ? 'maxlength="2"' : ''; ?> <?php echo $required ? 'required' : ''; ?> />
 				<?php endif; ?>
