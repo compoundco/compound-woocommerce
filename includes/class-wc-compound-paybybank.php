@@ -21,6 +21,9 @@ class WC_Compound_PayByBank {
 
 	const METHOD            = 'pay_by_bank';
 	const SESSION_TOKEN_KEY = 'compound_pbb_token';
+	/** Compound's token binding a bank link to the session that started it, and its email. */
+	const LINK_TOKEN_KEY = 'compound_pbb_link_token';
+	const LINK_EMAIL_KEY = 'compound_pbb_link_email';
 
 	public function register(): void {
 		add_action( 'wp_ajax_compound_pbb_session', array( $this, 'ajax_session' ) );
@@ -96,13 +99,25 @@ class WC_Compound_PayByBank {
 			WC_Compound_Sentry::report( 'paybybank_session failed', array( 'email' => $email ) );
 			wp_send_json_error( array( 'message' => __( 'Could not start bank linking. Please try again.', 'compound-woocommerce' ) ), 502 );
 		}
+		// Compound issues a token binding this session to this email, and requires it back when
+		// the customer returns. Kept server-side in the WooCommerce session rather than handed
+		// to the browser: the browser has no use for it, and the round trip it would take is
+		// exactly the one the token exists to make untrustworthy.
+		if ( ! empty( $result['link_token'] ) && WC()->session ) {
+			WC()->session->set( self::LINK_TOKEN_KEY, (string) $result['link_token'] );
+			WC()->session->set( self::LINK_EMAIL_KEY, $email );
+		}
 		wp_send_json_success( array( 'session_url' => (string) $result['session_url'] ) );
 	}
 
 	/**
-	 * Records the link once the customer is back. The provider returns its customer id in the
-	 * redirect's query parameters; Compound verifies it belongs to this email before storing
-	 * it, so a wrong or forged id is refused there rather than believed here.
+	 * Records the link once the customer is back.
+	 *
+	 * The provider returns its customer id in the redirect's query parameters, so it arrives
+	 * through the browser and cannot be taken on trust. Link Money's customer read carries no
+	 * email to check it against, so Compound binds the link to the session it issued instead:
+	 * the token stored when the session started goes back with the id, and a link for an email
+	 * that never started a session is refused there rather than believed here.
 	 */
 	public function ajax_link(): void {
 		check_ajax_referer( 'compound_pbb', 'nonce' );
@@ -113,7 +128,19 @@ class WC_Compound_PayByBank {
 			wp_send_json_error( array( 'message' => __( 'Could not confirm the bank link.', 'compound-woocommerce' ) ), 400 );
 		}
 
-		$result = self::api()->paybybank_link( $email, $customer_id );
+		$token = WC()->session ? (string) WC()->session->get( self::LINK_TOKEN_KEY, '' ) : '';
+		$for   = WC()->session ? (string) WC()->session->get( self::LINK_EMAIL_KEY, '' ) : '';
+		// The email may have been edited on the checkout form after the session started, in
+		// which case the token is for the wrong address and Compound would refuse it. Say so
+		// here rather than surfacing that as a generic failure.
+		if ( '' === $token || strtolower( $for ) !== strtolower( $email ) ) {
+			wp_send_json_error(
+				array( 'message' => __( 'Start bank linking again: your email changed since you began.', 'compound-woocommerce' ) ),
+				400
+			);
+		}
+
+		$result = self::api()->paybybank_link( $email, $customer_id, $token );
 		if ( is_wp_error( $result ) || empty( $result['bank_account_token'] ) ) {
 			wp_send_json_error( array( 'message' => __( 'Could not confirm the bank link. Please try linking again.', 'compound-woocommerce' ) ), 400 );
 		}
