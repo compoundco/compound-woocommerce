@@ -127,14 +127,18 @@ class WC_Compound_API {
 	 *
 	 * @param string $email       Customer email the link belongs to.
 	 * @param string $customer_id Provider customer id, from the redirect's query parameters.
+	 * @param string $link_token   Compound's token binding this link to the session that
+	 *                             started it. Required: the provider returns no email, so this
+	 *                             is what proves the id belongs to this shopper.
 	 * @return array|WP_Error {linked, status, bank_account_token, bank_name, account_last4}
 	 */
-	public function paybybank_link( string $email, string $customer_id ) {
+	public function paybybank_link( string $email, string $customer_id, string $link_token = '' ) {
 		return $this->post(
 			$this->api_base . '/v1/paybybank/link',
 			array(
 				'email'       => $email,
 				'customer_id' => $customer_id,
+				'link_token'  => $link_token,
 			),
 			''
 		);
