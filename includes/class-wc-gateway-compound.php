@@ -140,6 +140,10 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 			echo wp_kses_post( wpautop( $this->description ) );
 		}
 		$methods = $this->methods();
+		// The first rail is the one checked, which decides whether the pay-by-bank panel starts
+		// visible. Rendered server-side so the initial state is right before any script runs,
+		// rather than flashing the panel open and then hiding it.
+		$default = (string) array_key_first( $methods );
 		echo '<fieldset id="compound-method" style="border:0;padding:0;margin:0;">';
 		$first = true;
 		foreach ( $methods as $value => $label ) {
@@ -156,7 +160,11 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 		// rendered with the rails rather than after submission. Hidden until the rail is
 		// chosen; the shared script handles that.
 		if ( array_key_exists( WC_Compound_PayByBank::METHOD, $methods ) ) {
-			echo '<div class="compound-pbb-panel" data-method="' . esc_attr( WC_Compound_PayByBank::METHOD ) . '">';
+			printf(
+				'<div class="compound-pbb-panel" data-method="%s"%s>',
+				esc_attr( WC_Compound_PayByBank::METHOD ),
+				WC_Compound_PayByBank::METHOD === $default ? '' : ' hidden'
+			);
 			WC_Compound_PayByBank::render_field( $this->checkout_email() );
 			echo '</div>';
 		}
