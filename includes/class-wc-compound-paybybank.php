@@ -186,7 +186,18 @@ class WC_Compound_PayByBank {
 					<?php esc_html_e( 'Link your bank to pay directly from your account.', 'compound-woocommerce' ); ?>
 				<?php endif; ?>
 			</p>
-			<div class="compound-pbb__button"></div>
+			<div class="compound-pbb__button">
+				<?php if ( ! $existing ) : ?>
+					<?php
+					// Rendered here rather than created by the script. A button a shopper can
+					// see and click, that then reports a failure, beats an empty div that looks
+					// like the feature is missing. The script binds to it.
+					?>
+					<button type="button" class="button compound-pbb__start">
+						<?php esc_html_e( 'Link your bank', 'compound-woocommerce' ); ?>
+					</button>
+				<?php endif; ?>
+			</div>
 		</div>
 		<?php
 	}
