@@ -151,7 +151,12 @@
   function syncVisibility() {
     document.querySelectorAll(".compound-pbb-panel").forEach(function (panel) {
       var scope = panel.closest("form") || document;
-      var chosen = scope.querySelector('input[name="compound_method"]:checked');
+      // A checked radio when there is a choice, or the hidden input the gateway renders when
+      // there is only one rail. A hidden input is never :checked, so asking only for that
+      // would hide the panel on the single-rail checkout it is the whole point of.
+      var chosen =
+        scope.querySelector('input[name="compound_method"]:checked') ||
+        scope.querySelector('input[type="hidden"][name="compound_method"]');
       var visible = !!chosen && panel.dataset.method === chosen.value;
       panel.hidden = !visible;
       // Mount when it becomes visible, not only when the page settles. WooCommerce swaps the

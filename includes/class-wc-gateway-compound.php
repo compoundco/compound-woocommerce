@@ -144,18 +144,27 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 		// visible. Rendered server-side so the initial state is right before any script runs,
 		// rather than flashing the panel open and then hiding it.
 		$default = (string) array_key_first( $methods );
-		echo '<fieldset id="compound-method" style="border:0;padding:0;margin:0;">';
-		$first = true;
-		foreach ( $methods as $value => $label ) {
+		if ( count( $methods ) === 1 ) {
+			// One rail is not a choice. A lone radio button asks the shopper to pick the only
+			// option there is, so the selection just posts.
 			printf(
-				'<label style="display:block;margin:4px 0;"><input type="radio" name="compound_method" value="%s" %s /> %s</label>',
-				esc_attr( $value ),
-				checked( $first, true, false ),
-				esc_html( $label )
+				'<input type="hidden" name="compound_method" value="%s" />',
+				esc_attr( $default )
 			);
-			$first = false;
+		} else {
+			echo '<fieldset id="compound-method" style="border:0;padding:0;margin:0;">';
+			$first = true;
+			foreach ( $methods as $value => $label ) {
+				printf(
+					'<label style="display:block;margin:4px 0;"><input type="radio" name="compound_method" value="%s" %s /> %s</label>',
+					esc_attr( $value ),
+					checked( $first, true, false ),
+					esc_html( $label )
+				);
+				$first = false;
+			}
+			echo '</fieldset>';
 		}
-		echo '</fieldset>';
 		// Pay by bank needs the customer to link before placing the order, so its panel is
 		// rendered with the rails rather than after submission. Hidden until the rail is
 		// chosen; the shared script handles that.
@@ -168,7 +177,11 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 			WC_Compound_PayByBank::render_field( $this->checkout_email() );
 			echo '</div>';
 		}
-		if ( 'sandbox' === $this->get_option( 'environment' ) ) {
+		// Sandbox test values exist for the rails where the shopper types a number here. Pay by
+		// bank has none: the test profile is chosen inside the provider's own flow, so on a
+		// pay-by-bank-only checkout this block is a heading over three hidden fields.
+		$typed_rails = array_intersect_key( $methods, array_flip( array( 'card', 'ach', 'crypto' ) ) );
+		if ( 'sandbox' === $this->get_option( 'environment' ) && ! empty( $typed_rails ) ) {
 			wp_enqueue_script(
 				'wc-compound-sandbox-checkout',
 				plugins_url( 'assets/js/sandbox-checkout.js', COMPOUND_WC_FILE ),
