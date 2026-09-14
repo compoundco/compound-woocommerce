@@ -142,12 +142,25 @@
   }
 
   // Only show the panel when its rail is chosen. The radios are the gateway's own
-  // (name="compound_method"), so this reads the checkout rather than duplicating its state.
+  // (name="compound_method").
+  //
+  // The lookup is scoped to the panel's own form rather than the document: a checkout can
+  // carry more than one set of these radios (the classic gateway and the blocks gateway can
+  // both be present), and a document-wide :checked picks whichever came first, which is how
+  // the panel ended up hidden while Pay by bank was visibly selected.
   function syncVisibility() {
-    var chosen = document.querySelector('input[name="compound_method"]:checked');
-    var value = chosen ? chosen.value : "";
     document.querySelectorAll(".compound-pbb-panel").forEach(function (panel) {
-      panel.hidden = panel.dataset.method !== value;
+      var scope = panel.closest("form") || document;
+      var chosen = scope.querySelector('input[name="compound_method"]:checked');
+      var visible = !!chosen && panel.dataset.method === chosen.value;
+      panel.hidden = !visible;
+      // Mount when it becomes visible, not only when the page settles. WooCommerce swaps the
+      // payment area in and out, and a panel that appears after the last scan would otherwise
+      // show its status text with no button under it.
+      if (visible) {
+        var root = panel.querySelector(".compound-pbb");
+        if (root && !consumeRedirect(root)) mount(root);
+      }
     });
   }
 
@@ -162,7 +175,13 @@
     if (e.target && e.target.name === "compound_method") syncVisibility();
   });
 
-  document.addEventListener("DOMContentLoaded", scan);
+  // DOMContentLoaded may already have fired by the time a footer script runs, in which case
+  // the listener alone would never fire and nothing would ever mount.
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", scan);
+  } else {
+    scan();
+  }
   // WooCommerce replaces the payment area whenever totals or the chosen method change.
   if (window.jQuery) {
     window.jQuery(document.body).on("updated_checkout payment_method_selected", scan);
