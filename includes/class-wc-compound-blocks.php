@@ -65,11 +65,35 @@ class WC_Compound_Blocks extends AbstractPaymentMethodType {
 			// Without this the rail is selectable in the block checkout and there is nothing to
 			// click, which is exactly how it behaved.
 			'payByBank'   => array(
-				'method' => WC_Compound_PayByBank::METHOD,
-				'ajax'   => admin_url( 'admin-ajax.php' ),
-				'nonce'  => wp_create_nonce( 'compound_pbb' ),
+				'method'  => WC_Compound_PayByBank::METHOD,
+				'ajax'    => admin_url( 'admin-ajax.php' ),
+				'nonce'   => wp_create_nonce( 'compound_pbb' ),
+				// The block checkout only knows what the shopper has typed into ITS OWN fields
+				// so far, not their account - a signed-in customer who has not touched the name
+				// fields yet would otherwise be blocked from linking a bank they are entitled to
+				// link. Used only as a fallback behind whatever the shopper has actually entered.
+				'account' => is_user_logged_in() ? self::current_user_billing() : null,
 			),
 			'supports'    => array( 'products', 'refunds' ),
+		);
+	}
+
+	/**
+	 * The signed-in customer's own name and email, from their WooCommerce billing profile
+	 * where set, else their account record. Never used to override a field the shopper has
+	 * actually typed - see billingDetails() in blocks.js.
+	 *
+	 * @return array{first_name: string, last_name: string, email: string}
+	 */
+	private static function current_user_billing(): array {
+		$user    = wp_get_current_user();
+		$wc_cust = class_exists( 'WC_Customer' ) ? new WC_Customer( $user->ID ) : null;
+		$first   = $wc_cust ? $wc_cust->get_billing_first_name() : '';
+		$last    = $wc_cust ? $wc_cust->get_billing_last_name() : '';
+		return array(
+			'first_name' => '' !== $first ? $first : (string) $user->first_name,
+			'last_name'  => '' !== $last ? $last : (string) $user->last_name,
+			'email'      => (string) $user->user_email,
 		);
 	}
 }
