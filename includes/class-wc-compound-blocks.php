@@ -60,6 +60,15 @@ class WC_Compound_Blocks extends AbstractPaymentMethodType {
 			'methods'     => WC_Gateway_Compound::enabled_methods( $this->settings ),
 			'sandbox'     => 'sandbox' === ( $this->settings['environment'] ?? 'sandbox' ),
 			'testValues'  => WC_Gateway_Compound::sandbox_test_values(),
+			// Pay by bank needs the customer to link a bank before the order can be placed, so
+			// the block checkout needs the same AJAX endpoints and nonce the classic one uses.
+			// Without this the rail is selectable in the block checkout and there is nothing to
+			// click, which is exactly how it behaved.
+			'payByBank'   => array(
+				'method' => WC_Compound_PayByBank::METHOD,
+				'ajax'   => admin_url( 'admin-ajax.php' ),
+				'nonce'  => wp_create_nonce( 'compound_pbb' ),
+			),
 			'supports'    => array( 'products', 'refunds' ),
 		);
 	}
