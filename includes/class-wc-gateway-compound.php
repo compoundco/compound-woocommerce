@@ -204,7 +204,15 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 	}
 
 	public function init_form_fields() {
-		$this->form_fields = array(
+		$this->form_fields = $this->build_form_fields();
+	}
+
+	/**
+	 * The settings screen's fields. Split out so the per-rail toggles can be generated from
+	 * method_labels() instead of being maintained as a second, hand-written copy of it.
+	 */
+	private function build_form_fields(): array {
+		$fields = array(
 			'enabled'        => array(
 				'title'   => __( 'Enable/Disable', 'compound-woocommerce' ),
 				'type'    => 'checkbox',
@@ -221,7 +229,7 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 			'description'    => array(
 				'title'   => __( 'Description', 'compound-woocommerce' ),
 				'type'    => 'textarea',
-				'default' => __( 'Choose card, bank transfer, or cryptocurrency. Your payment is processed by Compound.', 'compound-woocommerce' ),
+				'default' => __( 'Your payment is processed by Compound.', 'compound-woocommerce' ),
 			),
 			'environment'    => array(
 				'title'   => __( 'Environment', 'compound-woocommerce' ),
@@ -249,22 +257,6 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 				'type'        => 'password',
 				'description' => __( 'Verifies inbound Compound webhooks (order.shipped/delivered).', 'compound-woocommerce' ),
 			),
-			'enable_card'    => array(
-				'title'   => __( 'Payment methods', 'compound-woocommerce' ),
-				'type'    => 'checkbox',
-				'label'   => __( 'Card', 'compound-woocommerce' ),
-				'default' => 'yes',
-			),
-			'enable_ach'     => array(
-				'type'    => 'checkbox',
-				'label'   => __( 'Bank transfer (ACH)', 'compound-woocommerce' ),
-				'default' => 'yes',
-			),
-			'enable_crypto'  => array(
-				'type'    => 'checkbox',
-				'label'   => __( 'Cryptocurrency', 'compound-woocommerce' ),
-				'default' => 'yes',
-			),
 			'custom_css'     => array(
 				'title'       => __( 'Custom CSS', 'compound-woocommerce' ),
 				'type'        => 'textarea',
@@ -272,6 +264,37 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 				'css'         => 'width:100%;height:160px;font-family:monospace;',
 			),
 		);
+
+		// One toggle per rail, built from method_labels() rather than written out here. The
+		// two lists drifted apart once already: pay by bank shipped at checkout while this
+		// screen still offered three methods, so the only way to turn it off was to not have
+		// it, and the only way to find that out was to look at the code.
+		$methods = array();
+		$first   = true;
+		foreach ( self::method_labels() as $method => $label ) {
+			$methods[ "enable_{$method}" ] = array_merge(
+				// WooCommerce prints the title once and groups what follows under it, so only
+				// the first row carries it.
+				$first ? array( 'title' => __( 'Payment methods', 'compound-woocommerce' ) ) : array(),
+				array(
+					'type'    => 'checkbox',
+					'label'   => $label,
+					'default' => 'yes',
+				)
+			);
+			if ( 'pay_by_bank' === $method ) {
+				$methods[ "enable_{$method}" ]['description'] = __(
+					'Open banking: the customer authorises the debit inside their own bank, so no account number is entered on this site. Compound picks the provider.',
+					'compound-woocommerce'
+				);
+			}
+			$first = false;
+		}
+
+		// Rails sit between the credentials and the styling, which is where they read best.
+		$css = $fields['custom_css'];
+		unset( $fields['custom_css'] );
+		return array_merge( $fields, $methods, array( 'custom_css' => $css ) );
 	}
 
 	private function api(): WC_Compound_API {
