@@ -612,4 +612,96 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 			'country' => $order->get_shipping_country(),
 		);
 	}
+
+	/**
+	 * Refunds through Compound, against whichever processor the original charge actually
+	 * used - card, ACH, pay by bank, or crypto. WooCommerce shows this as the "Refund via
+	 * {gateway title}" option on the order screen once a gateway declares 'refunds' support,
+	 * as this one already does; without this method that option always failed, since the
+	 * base class's default implementation is a no-op that returns false.
+	 *
+	 * WooCommerce creates the local WC_Order_Refund record before calling this method, so
+	 * this does not create a second one. It only confirms the money actually moved, then tags
+	 * that already-created record with Compound's refund id - both so a human can see where
+	 * it came from, and so the webhook that reports this same refund back from Compound
+	 * (WC_Compound_Webhooks, needed because a refund made from the Compound admin portal has
+	 * no WooCommerce click to hang off) recognises it as already applied rather than
+	 * duplicating it (WC_Compound_Refunds::already_synced()).
+	 *
+	 * @param int        $order_id WooCommerce order id.
+	 * @param float|null $amount   Amount to refund, in dollars. Null means the full remaining
+	 *                             balance, matching WC_Payment_Gateway's own contract.
+	 * @param string     $reason   Merchant-entered reason, if any.
+	 * @return bool|WP_Error True on success; WP_Error surfaces the real reason so the merchant
+	 *                       sees why, and so WooCommerce rolls back the refund record it made.
+	 */
+	public function process_refund( $order_id, $amount = null, $reason = '' ) {
+		$order = wc_get_order( $order_id );
+		if ( ! $order instanceof WC_Order ) {
+			return new WP_Error( 'compound_refund_no_order', __( 'Order not found.', 'compound-woocommerce' ) );
+		}
+		$charge_id = (string) $order->get_meta( '_compound_charge_id' );
+		if ( '' === $charge_id ) {
+			return new WP_Error( 'compound_refund_no_charge', __( 'This order has no Compound charge to refund.', 'compound-woocommerce' ) );
+		}
+
+		$amount_cents = null === $amount ? null : (int) round( ( (float) $amount ) * 100 );
+		if ( null !== $amount_cents && $amount_cents <= 0 ) {
+			return new WP_Error( 'compound_refund_invalid_amount', __( 'Refund amount must be greater than zero.', 'compound-woocommerce' ) );
+		}
+
+		// Persisted attempt counter, not a timestamp - a transport-level retry with the same
+		// key is exactly what stops it becoming a second real refund; a new key is only for a
+		// deliberate new attempt (same discipline as the charge-attempt counter above).
+		$attempt = max( 1, (int) $order->get_meta( '_compound_refund_attempt' ) + 1 );
+		$order->update_meta_data( '_compound_refund_attempt', $attempt );
+		$order->save_meta_data();
+		$idempotency_key = 'wc-refund-' . $order->get_order_key() . '-' . $attempt;
+
+		$result = $this->api()->refund_charge( $charge_id, $amount_cents, (string) $reason, $idempotency_key );
+		if ( is_wp_error( $result ) ) {
+			WC_Compound_Sentry::report(
+				'process_refund failed: ' . $result->get_error_message(),
+				array(
+					'order_id'  => $order_id,
+					'charge_id' => $charge_id,
+				)
+			);
+			return $result;
+		}
+
+		$refunds       = is_array( $result['refunds'] ?? null ) ? $result['refunds'] : array();
+		$new_refund_id = '';
+		foreach ( $refunds as $r ) {
+			$id = (string) ( $r['id'] ?? '' );
+			if ( '' !== $id && ! WC_Compound_Refunds::already_synced( $order, $id ) ) {
+				$new_refund_id = $id;
+				break;
+			}
+		}
+		if ( '' === $new_refund_id ) {
+			// Compound answered successfully but nothing new is in its refund history - not a
+			// state that should be possible given a 2xx response, so treated as a failure
+			// rather than silently reporting success for a refund that cannot be confirmed.
+			return new WP_Error( 'compound_refund_unconfirmed', __( 'Compound did not confirm this refund. Please try again.', 'compound-woocommerce' ) );
+		}
+
+		$wc_refund = WC_Compound_Refunds::find_untagged_refund( $order );
+		if ( $wc_refund ) {
+			WC_Compound_Refunds::tag_refund( $wc_refund, $order, $new_refund_id );
+		} else {
+			// WooCommerce did not leave an untagged local refund to attach to (an unusual
+			// call path, not the normal wp-admin button click) - record that Compound's side
+			// is done regardless, so the later webhook still recognises it as already applied.
+			WC_Compound_Refunds::mark_synced( $order, $new_refund_id );
+		}
+		$order->add_order_note(
+			sprintf(
+				/* translators: %s: Compound refund id */
+				__( 'Refund confirmed via Compound (refund %s).', 'compound-woocommerce' ),
+				$new_refund_id
+			)
+		);
+		return true;
+	}
 }
