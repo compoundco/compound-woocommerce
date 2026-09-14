@@ -152,28 +152,37 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 				esc_attr( $default )
 			);
 		} else {
+			// The radios are direct children rather than wrapped in their labels, and the
+			// pay-by-bank panel is a sibling that follows them, so CSS alone can reveal it
+			// from the checked state. Showing the panel is not something that should depend
+			// on a script running.
 			echo '<fieldset id="compound-method" style="border:0;padding:0;margin:0;">';
 			$first = true;
 			foreach ( $methods as $value => $label ) {
+				$id = 'compound-method-' . $value;
 				printf(
-					'<label style="display:block;margin:4px 0;"><input type="radio" name="compound_method" value="%s" %s /> %s</label>',
+					'<input type="radio" id="%s" name="compound_method" value="%s" %s />'
+						. '<label for="%s" style="display:inline-block;margin:4px 0 4px 4px;">%s</label><br />',
+					esc_attr( $id ),
 					esc_attr( $value ),
 					checked( $first, true, false ),
+					esc_attr( $id ),
 					esc_html( $label )
 				);
 				$first = false;
 			}
+			if ( array_key_exists( WC_Compound_PayByBank::METHOD, $methods ) ) {
+				echo '<div class="compound-pbb-panel" data-method="' . esc_attr( WC_Compound_PayByBank::METHOD ) . '">';
+				WC_Compound_PayByBank::render_field( $this->checkout_email() );
+				echo '</div>';
+			}
 			echo '</fieldset>';
 		}
-		// Pay by bank needs the customer to link before placing the order, so its panel is
-		// rendered with the rails rather than after submission. Hidden until the rail is
-		// chosen; the shared script handles that.
-		if ( array_key_exists( WC_Compound_PayByBank::METHOD, $methods ) ) {
-			printf(
-				'<div class="compound-pbb-panel" data-method="%s"%s>',
-				esc_attr( WC_Compound_PayByBank::METHOD ),
-				WC_Compound_PayByBank::METHOD === $default ? '' : ' hidden'
-			);
+		// With a single rail the panel is not conditional on anything, so it sits on its own
+		// after the hidden input. The multi-rail case renders it inside the fieldset above,
+		// where CSS can key off the checked radio.
+		if ( count( $methods ) === 1 && array_key_exists( WC_Compound_PayByBank::METHOD, $methods ) ) {
+			echo '<div class="compound-pbb-panel" data-method="' . esc_attr( WC_Compound_PayByBank::METHOD ) . '">';
 			WC_Compound_PayByBank::render_field( $this->checkout_email() );
 			echo '</div>';
 		}

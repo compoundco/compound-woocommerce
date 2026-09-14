@@ -47,6 +47,14 @@ class WC_Compound_Styles {
 		echo '.compound-screening { margin: 0 0 1.5em; }';
 		echo '.compound-screening__intro { font-weight: 600; margin: 0 0 0.75em; }';
 		echo '.compound-screening__field { margin: 0 0 1em; }';
+		// Pay by bank reveals itself from the checked radio, with no script involved. The
+		// panel is a sibling of the radios for exactly this reason: whether a shopper can see
+		// how to link a bank must not depend on JavaScript having run.
+		echo '#compound-method .compound-pbb-panel { display: none; }';
+		echo '#compound-method input[name="compound_method"][value="pay_by_bank"]:checked'
+			. ' ~ .compound-pbb-panel { display: block; }';
+		echo '.compound-pbb { margin: 0.75em 0 0.25em; }';
+		echo '.compound-pbb__status { margin: 0 0 0.5em; }';
 		echo '</style>' . "\n";
 
 		if ( '' !== trim( $custom ) ) {

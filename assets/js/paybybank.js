@@ -86,10 +86,11 @@
     var host = root.querySelector(".compound-pbb__button");
     if (!host) return;
 
-    var trigger = document.createElement("button");
-    trigger.type = "button";
-    trigger.className = "button compound-pbb__start";
-    trigger.textContent = "Link your bank";
+    // The button is rendered by PHP. Binding to it rather than creating it means a shopper
+    // always sees something to click: if this script never runs, they get a button that does
+    // nothing visible rather than an empty space that looks like the feature is missing.
+    var trigger = host.querySelector(".compound-pbb__start");
+    if (!trigger) return;
     trigger.addEventListener("click", function () {
       trigger.disabled = true;
       setStatus(root, "Opening your bank...");
@@ -124,7 +125,6 @@
           setStatus(root, "Could not start bank linking. Please try again.");
         });
     });
-    host.appendChild(trigger);
   }
 
   // The provider returns its customer id in the redirect's query parameters. Consume it, tell
