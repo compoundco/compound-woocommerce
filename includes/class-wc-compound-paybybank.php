@@ -95,8 +95,12 @@ class WC_Compound_PayByBank {
 
 		$cart_total = WC()->cart ? (int) round( (float) WC()->cart->get_total( 'edit' ) * 100 ) : 0;
 		$result     = self::api()->paybybank_session( $first, $last, $email, wc_get_checkout_url(), $cart_total );
-		if ( is_wp_error( $result ) || empty( $result['session_url'] ) ) {
-			WC_Compound_Sentry::report( 'paybybank_session failed', array( 'email' => $email ) );
+		if ( is_wp_error( $result ) ) {
+			WC_Compound_Sentry::report( 'paybybank_session failed: ' . $result->get_error_message(), array( 'email' => $email ) );
+			wp_send_json_error( array( 'message' => $result->get_error_message() ), 502 );
+		}
+		if ( empty( $result['session_url'] ) ) {
+			WC_Compound_Sentry::report( 'paybybank_session failed: no session_url', array( 'email' => $email ) );
 			wp_send_json_error( array( 'message' => __( 'Could not start bank linking. Please try again.', 'compound-woocommerce' ) ), 502 );
 		}
 		// Compound issues a token binding this session to this email, and requires it back when
@@ -141,8 +145,21 @@ class WC_Compound_PayByBank {
 		}
 
 		$result = self::api()->paybybank_link( $email, $customer_id, $token );
-		if ( is_wp_error( $result ) || empty( $result['bank_account_token'] ) ) {
-			wp_send_json_error( array( 'message' => __( 'Could not confirm the bank link. Please try linking again.', 'compound-woocommerce' ) ), 400 );
+		if ( is_wp_error( $result ) ) {
+			// Compound's own error messages are already written to be shown (state-facts,
+			// name-the-real-cause), so this is surfaced rather than replaced with a generic
+			// string that turns every distinct failure into the same unhelpful line.
+			WC_Compound_Sentry::report( 'paybybank_link failed: ' . $result->get_error_message(), array( 'email' => $email ) );
+			wp_send_json_error( array( 'message' => $result->get_error_message() ), 400 );
+		}
+		if ( empty( $result['bank_account_token'] ) ) {
+			// A real response, just not one that can be charged yet: Link Money reports the
+			// account as still activating rather than a failure. Distinct from the error case
+			// above, so a shopper is told to wait rather than that something went wrong.
+			wp_send_json_error(
+				array( 'message' => __( 'Your bank is still confirming this account. Wait a moment and try linking again.', 'compound-woocommerce' ) ),
+				409
+			);
 		}
 		wp_send_json_success(
 			array(
