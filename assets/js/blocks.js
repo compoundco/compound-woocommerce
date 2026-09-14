@@ -18,20 +18,35 @@
 	const PBB = payByBank.method || 'pay_by_bank';
 	const SDK_URL = 'https://static.link.money/linkmoney-web/v1/latest/linkmoney-web.min.js';
 
-	// The shopper's email, read from the block checkout's own store so a linking session is
-	// started for the address they are actually checking out with.
-	function checkoutEmail() {
+	// The shopper's name and email, read from the block checkout's own store so the linking
+	// session is started for the person actually checking out. The provider requires all
+	// three: the session is what its hosted flow greets them by.
+	//
+	// Falls back to the signed-in account's own name/email for whichever field the shopper
+	// has not typed into this form yet - the block checkout only knows its own fields, not
+	// their account, so without this a returning customer who has not retyped their name is
+	// blocked from linking a bank they are already entitled to link. The fallback never
+	// overrides something the shopper actually entered.
+	function billingDetails() {
+		const account = payByBank.account || {};
+		let typed = { email: '', first_name: '', last_name: '' };
 		try {
 			const data = window.wp.data.select( 'wc/store/cart' ).getCartData();
-			return ( data && data.billingAddress && data.billingAddress.email ) || '';
+			const a = ( data && data.billingAddress ) || {};
+			typed = { email: a.email || '', first_name: a.first_name || '', last_name: a.last_name || '' };
 		} catch ( e ) {
-			return '';
+			// Cart store unavailable; fall through to the account values alone.
 		}
+		return {
+			email: typed.email || account.email || '',
+			first_name: typed.first_name || account.first_name || '',
+			last_name: typed.last_name || account.last_name || '',
+		};
 	}
 
 	function pbbPost( action, extra ) {
 		const body = new URLSearchParams(
-			Object.assign( { action: action, nonce: payByBank.nonce, email: checkoutEmail() }, extra || {} )
+			Object.assign( { action: action, nonce: payByBank.nonce }, billingDetails(), extra || {} )
 		);
 		return fetch( payByBank.ajax, {
 			method: 'POST',
@@ -116,6 +131,13 @@
 		}, [] );
 
 		function startLink() {
+			const who = billingDetails();
+			if ( ! who.first_name || ! who.last_name || ! who.email ) {
+				// Checked here so the shopper is pointed at the field above rather than told
+				// something vague after a round trip.
+				setBankStatus( 'Fill in your name and email above, then link your bank.' );
+				return;
+			}
 			setBankBusy( true );
 			setBankStatus( 'Opening your bank...' );
 			pbbPost( 'compound_pbb_session', {} )
