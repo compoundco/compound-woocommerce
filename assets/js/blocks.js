@@ -14,6 +14,50 @@
 	const { decodeEntities } = window.wp.htmlEntities;
 
 	const settings = getSetting( 'compound_data', {} );
+	const payByBank = settings.payByBank || {};
+	const PBB = payByBank.method || 'pay_by_bank';
+	const SDK_URL = 'https://static.link.money/linkmoney-web/v1/latest/linkmoney-web.min.js';
+
+	// The shopper's email, read from the block checkout's own store so a linking session is
+	// started for the address they are actually checking out with.
+	function checkoutEmail() {
+		try {
+			const data = window.wp.data.select( 'wc/store/cart' ).getCartData();
+			return ( data && data.billingAddress && data.billingAddress.email ) || '';
+		} catch ( e ) {
+			return '';
+		}
+	}
+
+	function pbbPost( action, extra ) {
+		const body = new URLSearchParams(
+			Object.assign( { action: action, nonce: payByBank.nonce, email: checkoutEmail() }, extra || {} )
+		);
+		return fetch( payByBank.ajax, {
+			method: 'POST',
+			credentials: 'same-origin',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: body.toString(),
+		} ).then( function ( r ) {
+			return r.json();
+		} );
+	}
+
+	// The provider returns the customer id in the redirect's query string, so a shopper coming
+	// back from their bank lands here with it. Consumed once and stripped from the URL, so a
+	// refresh does not try to link again.
+	function takeRedirectCustomerId() {
+		const params = new URLSearchParams( window.location.search );
+		const id = params.get( 'customerId' ) || params.get( 'customer_id' );
+		if ( ! id ) {
+			return '';
+		}
+		params.delete( 'customerId' );
+		params.delete( 'customer_id' );
+		const qs = params.toString();
+		window.history.replaceState( {}, '', window.location.pathname + ( qs ? '?' + qs : '' ) );
+		return id;
+	}
 	const title = decodeEntities( settings.title || 'Compound' );
 	const description = decodeEntities( settings.description || '' );
 	const methods = settings.methods && Object.keys( settings.methods ).length
@@ -31,10 +75,97 @@
 		const [ routingNumber, setRoutingNumber ] = useState( '110000000' );
 		const [ accountNumber, setAccountNumber ] = useState( '000123456789' );
 		const [ cryptoReference, setCryptoReference ] = useState( 'crypto_success' );
+		// Pay by bank: the token that proves a bank is linked, plus whatever we can tell the
+		// shopper about it. No token means the order cannot be placed on this rail.
+		const [ bankToken, setBankToken ] = useState( '' );
+		const [ bankLabel, setBankLabel ] = useState( '' );
+		const [ bankBusy, setBankBusy ] = useState( false );
+		const [ bankStatus, setBankStatus ] = useState( '' );
+
+		function finishLink( customerId ) {
+			setBankBusy( true );
+			setBankStatus( 'Confirming your bank...' );
+			pbbPost( 'compound_pbb_link', { customer_id: customerId } )
+				.then( function ( res ) {
+					setBankBusy( false );
+					if ( ! res || ! res.success ) {
+						setBankStatus( ( res && res.data && res.data.message ) || 'Could not confirm the bank link.' );
+						return;
+					}
+					setBankToken( res.data.bank_account_token );
+					const name = res.data.bank_name || '';
+					const last4 = res.data.account_last4 ? '****' + res.data.account_last4 : '';
+					setBankLabel( ( name + ' ' + last4 ).trim() || 'Your bank account is linked.' );
+					setBankStatus( '' );
+				} )
+				.catch( function () {
+					setBankBusy( false );
+					setBankStatus( 'Could not confirm the bank link.' );
+				} );
+		}
+
+		// A shopper returning from their bank arrives with the customer id on the URL.
+		useEffect( () => {
+			const returned = takeRedirectCustomerId();
+			if ( returned ) {
+				finishLink( returned );
+			}
+			// Runs once, on mount: the redirect is consumed and stripped, so there is nothing
+			// to react to afterwards.
+			// eslint-disable-next-line react-hooks/exhaustive-deps
+		}, [] );
+
+		function startLink() {
+			setBankBusy( true );
+			setBankStatus( 'Opening your bank...' );
+			pbbPost( 'compound_pbb_session', {} )
+				.then( function ( res ) {
+					if ( ! res || ! res.success ) {
+						setBankBusy( false );
+						setBankStatus( ( res && res.data && res.data.message ) || 'Could not start bank linking.' );
+						return;
+					}
+					// The simulator hands back a URL that already carries a customer id, which
+					// is the shape the real hosted flow returns the shopper in.
+					if ( res.data.simulated ) {
+						window.location.assign( res.data.session_url );
+						return;
+					}
+					import( /* webpackIgnore: true */ SDK_URL )
+						.then( function ( mod ) {
+							const link = ( mod.default || mod ).create
+								? ( mod.default || mod ).create( { sessionUrl: res.data.session_url } )
+								: null;
+							if ( link && link.open ) {
+								link.open();
+								return;
+							}
+							window.location.assign( res.data.session_url );
+						} )
+						.catch( function () {
+							// The SDK is a convenience: the hosted flow works as a plain
+							// redirect, so a blocked CDN must not be a dead end.
+							window.location.assign( res.data.session_url );
+						} );
+				} )
+				.catch( function () {
+					setBankBusy( false );
+					setBankStatus( 'Could not start bank linking.' );
+				} );
+		}
 
 		useEffect( () => {
 			const unsubscribe = onPaymentSetup( () => {
 				const paymentMethodData = { compound_method: method };
+				if ( method === PBB ) {
+					if ( ! bankToken ) {
+						return {
+							type: emitResponse.responseTypes.ERROR,
+							message: 'Link your bank account before placing the order.',
+						};
+					}
+					paymentMethodData.compound_pbb_token = bankToken;
+				}
 				if ( settings.sandbox && method === 'card' ) {
 					paymentMethodData.compound_card_number = cardNumber;
 				}
@@ -51,7 +182,7 @@
 				};
 			} );
 			return unsubscribe;
-		}, [ method, cardNumber, routingNumber, accountNumber, cryptoReference, onPaymentSetup, emitResponse.responseTypes.SUCCESS ] );
+		}, [ method, cardNumber, routingNumber, accountNumber, cryptoReference, bankToken, onPaymentSetup, emitResponse.responseTypes.SUCCESS, emitResponse.responseTypes.ERROR ] );
 
 		const children = [];
 		if ( description ) {
@@ -75,7 +206,34 @@
 				)
 			);
 		} );
-		if ( settings.sandbox ) {
+		// Pay by bank: link before the order can be placed.
+		if ( method === PBB ) {
+			children.push(
+				createElement(
+					'p',
+					{ key: 'pbb-status' },
+					bankStatus || bankLabel || 'Link your bank to pay directly from your account.'
+				)
+			);
+			if ( ! bankToken ) {
+				children.push(
+					createElement(
+						'button',
+						{
+							key: 'pbb-button',
+							type: 'button',
+							className: 'wc-block-components-button',
+							disabled: bankBusy,
+							onClick: startLink,
+						},
+						bankBusy ? 'Working...' : 'Link your bank'
+					)
+				);
+			}
+		}
+		// Sandbox test values are for the rails where a number is typed here. Pay by bank has
+		// none: its test profile is chosen inside the provider's own flow.
+		if ( settings.sandbox && method !== PBB ) {
 			children.push( createElement( 'p', { key: 'sandbox-title' },
 				createElement( 'strong', null, 'Sandbox test payment' )
 			) );
