@@ -93,8 +93,10 @@ class WC_Compound_PayByBank {
 			wp_send_json_error( array( 'message' => __( 'Enter your name first.', 'compound-woocommerce' ) ), 400 );
 		}
 
-		$cart_total = WC()->cart ? (int) round( (float) WC()->cart->get_total( 'edit' ) * 100 ) : 0;
-		$result     = self::api()->paybybank_session( $first, $last, $email, wc_get_checkout_url(), $cart_total );
+		// No cart total passed here - see the note on WC_Compound_API::paybybank_session().
+		// This step only links a bank account; the real, tracked charge happens separately
+		// when the order is actually placed.
+		$result = self::api()->paybybank_session( $first, $last, $email, wc_get_checkout_url() );
 		if ( is_wp_error( $result ) ) {
 			WC_Compound_Sentry::report( 'paybybank_session failed: ' . $result->get_error_message(), array( 'email' => $email ) );
 			wp_send_json_error( array( 'message' => $result->get_error_message() ), 502 );
