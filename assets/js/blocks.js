@@ -16,7 +16,6 @@
 	const settings = getSetting( 'compound_data', {} );
 	const payByBank = settings.payByBank || {};
 	const PBB = payByBank.method || 'pay_by_bank';
-	const SDK_URL = 'https://static.link.money/linkmoney-web/v1/latest/linkmoney-web.min.js';
 
 	// The shopper's name and email, read from the block checkout's own store so the linking
 	// session is started for the person actually checking out. The provider requires all
@@ -130,64 +129,17 @@
 			// eslint-disable-next-line react-hooks/exhaustive-deps
 		}, [] );
 
-		function startLink() {
-			const who = billingDetails();
-			if ( ! who.first_name || ! who.last_name || ! who.email ) {
-				// Checked here so the shopper is pointed at the field above rather than told
-				// something vague after a round trip.
-				setBankStatus( 'Fill in your name and email above, then link your bank.' );
-				return;
-			}
-			setBankBusy( true );
-			setBankStatus( 'Opening your bank...' );
-			pbbPost( 'compound_pbb_session', {} )
-				.then( function ( res ) {
-					if ( ! res || ! res.success ) {
-						setBankBusy( false );
-						setBankStatus( ( res && res.data && res.data.message ) || 'Could not start bank linking.' );
-						return;
-					}
-					// The simulator hands back a URL that already carries a customer id, which
-					// is the shape the real hosted flow returns the shopper in.
-					if ( res.data.simulated ) {
-						window.location.assign( res.data.session_url );
-						return;
-					}
-					import( /* webpackIgnore: true */ SDK_URL )
-						.then( function ( mod ) {
-							const link = ( mod.default || mod ).create
-								? ( mod.default || mod ).create( { sessionUrl: res.data.session_url } )
-								: null;
-							if ( link && link.open ) {
-								link.open();
-								return;
-							}
-							window.location.assign( res.data.session_url );
-						} )
-						.catch( function () {
-							// The SDK is a convenience: the hosted flow works as a plain
-							// redirect, so a blocked CDN must not be a dead end.
-							window.location.assign( res.data.session_url );
-						} );
-				} )
-				.catch( function () {
-					setBankBusy( false );
-					setBankStatus( 'Could not start bank linking.' );
-				} );
-		}
-
 		useEffect( () => {
 			const unsubscribe = onPaymentSetup( () => {
 				const paymentMethodData = { compound_method: method };
-				if ( method === PBB ) {
-					if ( ! bankToken ) {
-						return {
-							type: emitResponse.responseTypes.ERROR,
-							message: 'Link your bank account before placing the order.',
-						};
-					}
+				if ( method === PBB && bankToken ) {
+					// Already linked (a returning customer): charges synchronously, unchanged.
 					paymentMethodData.compound_pbb_token = bankToken;
 				}
+				// No token: not an error. The order-first flow starts Link Money's hosted
+				// session and returns a redirect_url instead of completing the order (see
+				// class-wc-gateway-compound.php's payment_method()/process_payment()) - there
+				// is no "link only" step to complete before the order can be placed.
 				if ( settings.sandbox && method === 'card' ) {
 					paymentMethodData.compound_card_number = cardNumber;
 				}
@@ -228,30 +180,22 @@
 				)
 			);
 		} );
-		// Pay by bank: link before the order can be placed.
+		// Pay by bank. An already-linked customer (bankToken set) sees their bank and charges
+		// synchronously on submit, same as today. A first-time customer links no bank here at
+		// all - Link Money's hosted session requires a real payment amount to even start (there
+		// is no link-only step for a first purchase), so placing the order is itself what
+		// starts that session; the shopper is redirected there after submitting.
 		if ( method === PBB ) {
 			children.push(
 				createElement(
 					'p',
 					{ key: 'pbb-status' },
-					bankStatus || bankLabel || 'Link your bank to pay directly from your account.'
+					bankStatus || bankLabel ||
+						( bankToken
+							? ''
+							: 'You will link your bank account on the next step, right after you place your order.' )
 				)
 			);
-			if ( ! bankToken ) {
-				children.push(
-					createElement(
-						'button',
-						{
-							key: 'pbb-button',
-							type: 'button',
-							className: 'wc-block-components-button',
-							disabled: bankBusy,
-							onClick: startLink,
-						},
-						bankBusy ? 'Working...' : 'Link your bank'
-					)
-				);
-			}
 		}
 		// Sandbox test values are for the rails where a number is typed here. Pay by bank has
 		// none: its test profile is chosen inside the provider's own flow.
