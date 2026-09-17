@@ -100,23 +100,27 @@ class WC_Compound_API {
 	 * brand's) processor credential and returns a URL for the provider's hosted flow; this
 	 * plugin never holds a processor credential and never sees an account number.
 	 *
+	 * FOUND LIVE 2026-09-17: this used to also accept an order amount, on the assumption it
+	 * only changed what the provider's hosted screen displayed. It does not - passing an
+	 * amount here makes the provider actually authorize and execute a real payment as part of
+	 * linking, completely outside Compound (no charge record, no idempotency key), on top of
+	 * the real, tracked charge that happens again when the order is actually placed. Every
+	 * pay-by-bank customer was being charged twice. This call links a bank account and
+	 * nothing else now; the amount parameter is gone, not just unused.
+	 *
 	 * @param string $first_name   Customer first name.
 	 * @param string $last_name    Customer last name.
 	 * @param string $email        Customer email.
 	 * @param string $redirect_url Where the customer returns after linking. Must be https.
-	 * @param int    $amount_cents Optional order amount, shown on the provider's pay screen.
 	 * @return array|WP_Error {session_url}
 	 */
-	public function paybybank_session( string $first_name, string $last_name, string $email, string $redirect_url, int $amount_cents = 0 ) {
+	public function paybybank_session( string $first_name, string $last_name, string $email, string $redirect_url ) {
 		$body = array(
 			'first_name'   => $first_name,
 			'last_name'    => $last_name,
 			'email'        => $email,
 			'redirect_url' => $redirect_url,
 		);
-		if ( $amount_cents > 0 ) {
-			$body['amount'] = $amount_cents;
-		}
 		return $this->post( $this->api_base . '/v1/paybybank/sessions', $body, '' );
 	}
 

@@ -146,9 +146,15 @@ print(json.dumps({
     # gateway actually reads (see WC_Gateway_Compound::migrate_legacy_settings).
     "api_base": "${orders_url}",
     "webhook_secret": os.environ.get("COMPOUND_WEBHOOK_SECRET", ""),
-    "enable_card": "yes",
+    # Card and crypto route through mock processor adapters on the Compound side - no
+    # real tokenization or settlement exists for either yet. Enabling them here would let
+    # a real customer "pay" and get a real order created with no money actually moving.
+    # Pay by bank (Link Money) is the only rail with a real, live-tested implementation -
+    # see this repo's session history. Flip these on a deployment at a time, deliberately,
+    # once each rail is actually real - never all three by default again.
+    "enable_card": "no",
     "enable_ach": "yes",
-    "enable_crypto": "yes",
+    "enable_crypto": "no",
 }))
 PY
 )"
