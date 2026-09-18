@@ -3,7 +3,7 @@
  * Plugin Name:       Compound for WooCommerce
  * Plugin URI:        https://compound.dev
  * Description:       Route WooCommerce checkout and orders through Compound - payments orchestration + pharmacy fulfillment for DTC peptide brands.
- * Version:           0.1.39
+ * Version:           0.1.40
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            Compound
@@ -16,7 +16,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'COMPOUND_WC_VERSION', '0.1.39' );
+define( 'COMPOUND_WC_VERSION', '0.1.40' );
 define( 'COMPOUND_WC_FILE', __FILE__ );
 define( 'COMPOUND_WC_PATH', plugin_dir_path( __FILE__ ) );
 define( 'COMPOUND_WC_URL', plugin_dir_url( __FILE__ ) );
@@ -96,8 +96,10 @@ add_action(
 		// telemedicine" is a brand-level setting in the Compound admin portal, not a
 		// WordPress option; every handler checks WC_Gen_Health_Settings::is_active() itself
 		// (a cached read from Compound), so toggling it never needs a restart. Requiring an
-		// account to browse the catalog at all is a separate, pre-existing concern handled
-		// by the active theme (inc/access-control.php), not this plugin.
+		// account to browse the catalog at all is a separate concern: this plugin stores the
+		// preference (the gateway's own "Storefront access" setting), but enforcing it is up
+		// to the active theme - chefspeps' reference theme (inc/access-control.php) reads it
+		// and does; this plugin never gates a request itself.
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-settings.php';
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-gen-health-product-meta.php';
 		require_once COMPOUND_WC_PATH . 'includes/class-wc-compound-visit.php';
