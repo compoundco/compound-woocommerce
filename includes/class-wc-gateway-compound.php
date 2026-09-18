@@ -336,7 +336,7 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 		}
 		$order->update_meta_data( '_compound_method', $method );
 
-		$payment_method = $this->payment_method( $method );
+		$payment_method = $this->payment_method( $method, $order );
 		if ( is_wp_error( $payment_method ) ) {
 			WC_Compound_Sentry::report(
 				'payment_method failed: ' . $payment_method->get_error_message(),
@@ -474,6 +474,28 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 			);
 		}
 
+		// A first-time pay-by-bank link: the charge is (correctly) still `processing` - there is
+		// nothing more to do synchronously, the hosted session IS the payment. Send the shopper
+		// off-site to complete it, exactly like any other redirect gateway (PayPal Standard,
+		// hosted Stripe Checkout) - WooCommerce Blocks already knows how to follow this result
+		// shape. The order stays pending_payment; payment.authorized/payment.failed resolve it
+		// asynchronously via the Compound webhook (see the payments service's order-first notes).
+		$redirect_url = (string) ( $charge['redirect_url'] ?? '' );
+		if ( '' !== $redirect_url ) {
+			// link_token proves to Compound that the bank account the customer selects really
+			// belongs to this email (Link Money's own customer read carries no email to check
+			// it against) - the woocommerce_thankyou hook needs it back once the customer
+			// returns, and by then this is a brand-new page load with nothing else to carry it.
+			$order->update_meta_data( '_compound_pbb_link_token', (string) ( $charge['link_token'] ?? '' ) );
+			$order->update_meta_data( '_compound_pbb_link_email', $order->get_billing_email() );
+			$order->add_order_note( sprintf( 'Compound order %s - charge %s awaiting bank authorization, redirecting to Link Money.', $compound_order_id, $charge_id ) );
+			$order->save();
+			return array(
+				'result'   => 'success',
+				'redirect' => $redirect_url,
+			);
+		}
+
 		// declined / processing (non-captured) -> do not complete the order.
 		if ( 'declined' === $status ) {
 			$order->update_meta_data( '_compound_charge_retry_ready', 'yes' );
@@ -488,10 +510,11 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 	 * Convert sandbox test values (or a future live hosted-field token) into the opaque
 	 * payment_method object sent to Compound. Raw sandbox inputs are never persisted.
 	 *
-	 * @param string $method Rail the shopper chose: card, ach, or crypto.
+	 * @param string   $method Rail the shopper chose: card, ach, or crypto.
+	 * @param WC_Order $order  The order being paid, for the pay-by-bank first-time-link fields.
 	 * @return array|WP_Error
 	 */
-	private function payment_method( string $method ) {
+	private function payment_method( string $method, WC_Order $order ) {
 		// Pay by bank has no sandbox card-number equivalent: the token is always a real
 		// provider-issued customer reference produced by the linking flow, in both
 		// environments, because there is nothing else it could be.
@@ -500,10 +523,24 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 			// one in live mode, and a bank reference must never be picked up as a card token.
 			// phpcs:ignore WordPress.Security.NonceVerification.Missing -- WooCommerce verifies the checkout nonce before process_payment runs.
 			$token = isset( $_POST['compound_pbb_token'] ) ? sanitize_text_field( wp_unslash( $_POST['compound_pbb_token'] ) ) : '';
-			if ( '' === $token ) {
-				return new WP_Error( 'compound_bank_link_required', __( 'Link your bank account before placing the order.', 'compound-woocommerce' ) );
+			if ( '' !== $token ) {
+				return array( 'bank_account_token' => $token );
 			}
-			return array( 'bank_account_token' => $token );
+			// No linked bank yet: Link Money's hosted session IS the first-purchase flow (there
+			// is no "link only" step for a first-time customer - see the order-first redesign
+			// notes on the Compound payments service). Compound creates the charge and starts
+			// that hosted session; process_payment() below follows charge.redirect_url off-site
+			// instead of completing the order here. The customer returns to $order's own
+			// order-received page (get_return_url), where woocommerce_thankyou finalises the link.
+			if ( '' === $order->get_billing_email() ) {
+				return new WP_Error( 'compound_bank_link_required', __( 'A billing email is required to link your bank account.', 'compound-woocommerce' ) );
+			}
+			return array(
+				'first_name'   => $order->get_billing_first_name(),
+				'last_name'    => $order->get_billing_last_name(),
+				'email'        => $order->get_billing_email(),
+				'redirect_url' => $this->get_return_url( $order ),
+			);
 		}
 		if ( 'sandbox' !== $this->get_option( 'environment' ) ) {
 			// WooCommerce verifies the checkout nonce before process_payment runs, so this

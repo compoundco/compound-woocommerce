@@ -30,6 +30,7 @@ class WC_Compound_PayByBank {
 		add_action( 'wp_ajax_nopriv_compound_pbb_session', array( $this, 'ajax_session' ) );
 		add_action( 'wp_ajax_compound_pbb_link', array( $this, 'ajax_link' ) );
 		add_action( 'wp_ajax_nopriv_compound_pbb_link', array( $this, 'ajax_link' ) );
+		add_action( 'woocommerce_thankyou', array( $this, 'thankyou' ) );
 	}
 
 	/** Settings for the Compound gateway, read without needing a gateway instance. */
@@ -173,9 +174,68 @@ class WC_Compound_PayByBank {
 	}
 
 	/**
-	 * Checkout markup for this rail: either the account the customer already linked, or the
-	 * provider's own button. The button is theirs by design, both for brand consistency and
-	 * because it is what opens their hosted flow.
+	 * Finishes a first-time bank link once the customer lands back on the order-received page
+	 * from Link Money's hosted flow. Never blocks the receipt page on failure: the order and
+	 * its charge already exist regardless of whether this link is recorded for a future
+	 * reorder to skip the redirect. See the order-first redesign notes on
+	 * class-wc-gateway-compound.php's payment_method()/process_payment() for how the order got
+	 * here with `_compound_pbb_link_token`/`_compound_pbb_link_email` already on it.
+	 *
+	 * @param int $order_id WooCommerce order id, as WooCommerce's own hook passes it.
+	 */
+	public function thankyou( $order_id ): void {
+		$order = wc_get_order( $order_id );
+		if ( ! $order || self::METHOD !== $order->get_meta( '_compound_method' ) ) {
+			return;
+		}
+		// Idempotent: this page can be reloaded, and a reload must not attempt (or report) the
+		// link a second time.
+		if ( 'yes' === $order->get_meta( '_compound_pbb_link_done' ) ) {
+			return;
+		}
+		// Link Money's own redirect back to us, not a form submission - there is no nonce to
+		// verify here. What proves this customer id is ours is the link_token stored on the
+		// order at charge time, not anything arriving on this request.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$customer_id = isset( $_GET['customerId'] ) ? sanitize_text_field( wp_unslash( $_GET['customerId'] ) ) : '';
+		if ( '' === $customer_id ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$customer_id = isset( $_GET['customer_id'] ) ? sanitize_text_field( wp_unslash( $_GET['customer_id'] ) ) : '';
+		}
+		if ( '' === $customer_id ) {
+			// The customer may not have completed linking (abandoned the hosted flow) - the
+			// order stays exactly as process_payment left it, awaiting the async webhook.
+			return;
+		}
+
+		$email = (string) $order->get_meta( '_compound_pbb_link_email' );
+		$token = (string) $order->get_meta( '_compound_pbb_link_token' );
+		if ( '' === $email || '' === $token ) {
+			return;
+		}
+
+		$result = self::api()->paybybank_link( $email, $customer_id, $token );
+		if ( is_wp_error( $result ) || empty( $result['bank_account_token'] ) ) {
+			WC_Compound_Sentry::report(
+				'thankyou paybybank_link failed: ' . ( is_wp_error( $result ) ? $result->get_error_message() : 'no bank_account_token' ),
+				array( 'order_id' => $order_id )
+			);
+			return;
+		}
+		$order->update_meta_data( '_compound_pbb_link_done', 'yes' );
+		$order->save();
+	}
+
+	/**
+	 * Checkout markup for this rail: the account the customer already linked (charges
+	 * synchronously on submit, unchanged), or - for a first-time customer - a note that
+	 * linking happens right after the order is placed.
+	 *
+	 * There is no pre-order "link your bank" button here. Link Money's hosted session
+	 * requires a real payment amount to even start (there is no link-only mode for a first
+	 * purchase - see the order-first redesign notes on the Compound payments service), so a
+	 * first-time link cannot happen before an order and its charge exist. process_payment()
+	 * starts that session and redirects there once the order is placed instead.
 	 *
 	 * @param string $email Customer email, when known.
 	 */
@@ -202,21 +262,10 @@ class WC_Compound_PayByBank {
 					echo esc_html( '' !== $label ? $label : __( 'Your bank account is linked.', 'compound-woocommerce' ) );
 					?>
 				<?php else : ?>
-					<?php esc_html_e( 'Link your bank to pay directly from your account.', 'compound-woocommerce' ); ?>
+					<?php esc_html_e( 'You will link your bank account on the next step, right after you place your order.', 'compound-woocommerce' ); ?>
 				<?php endif; ?>
 			</p>
-			<div class="compound-pbb__button">
-				<?php if ( ! $existing ) : ?>
-					<?php
-					// Rendered here rather than created by the script. A button a shopper can
-					// see and click, that then reports a failure, beats an empty div that looks
-					// like the feature is missing. The script binds to it.
-					?>
-					<button type="button" class="button compound-pbb__start">
-						<?php esc_html_e( 'Link your bank', 'compound-woocommerce' ); ?>
-					</button>
-				<?php endif; ?>
-			</div>
+			<div class="compound-pbb__button"></div>
 		</div>
 		<?php
 	}

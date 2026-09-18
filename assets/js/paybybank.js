@@ -1,27 +1,19 @@
 /**
  * Pay by bank at checkout.
  *
- * Asks our own server for a linking session, hands the resulting sessionUrl to the provider's
- * SDK, and posts the customer id back once the customer returns from their bank. No account
- * number is ever present on this page: the customer authenticates with their bank inside the
- * provider's own flow.
- *
- * The provider's SDK is loaded from their CDN only when this rail is actually chosen, so a
- * checkout paying by card never fetches it.
+ * A returning customer's linked bank shows on the form already (rendered server-side, see
+ * class-wc-compound-paybybank.php's render_field) and charges synchronously on submit - no
+ * script involvement needed for that case. A first-time customer links no bank on this page at
+ * all: Link Money's hosted session requires a real payment amount to even start (there is no
+ * link-only mode for a first purchase), so placing the order is itself what starts that
+ * session, via a redirect after process_payment() runs. This script's only remaining job is
+ * finishing that link if the customer somehow lands back on the checkout page with a bank's
+ * customerId still on the URL (a stale bookmark, or a redirect target from before this file's
+ * order-first behavior shipped) - the normal case now returns to the order-received page
+ * instead, where the woocommerce_thankyou hook finishes the link server-side.
  */
 (function () {
   "use strict";
-
-  var SDK_URL = "https://static.link.money/linkmoney-web/v1/latest/linkmoney-web.min.js";
-  var sdk = null;
-
-  function loadSdk() {
-    if (sdk) return sdk;
-    sdk = import(/* webpackIgnore: true */ SDK_URL).then(function (m) {
-      return m.default || m;
-    });
-    return sdk;
-  }
 
   function post(root, action, extra) {
     var body = new URLSearchParams(
@@ -76,55 +68,11 @@
   }
 
   function mount(root) {
-    if (root.dataset.mounted === "1") return;
-    // Already linked: nothing to mount, the token is on the form.
-    if (root.querySelector(".compound-pbb__token").value) {
-      root.dataset.mounted = "1";
-      return;
-    }
+    // Nothing to bind: an already-linked bank is rendered on the form as-is, and a
+    // first-time customer has no pre-order action to take on this page (see the file
+    // doc comment above). Kept as a distinct function/dataset flag for consumeRedirect's
+    // benefit, which still calls this once it has handled any stale redirect.
     root.dataset.mounted = "1";
-    var host = root.querySelector(".compound-pbb__button");
-    if (!host) return;
-
-    // The button is rendered by PHP. Binding to it rather than creating it means a shopper
-    // always sees something to click: if this script never runs, they get a button that does
-    // nothing visible rather than an empty space that looks like the feature is missing.
-    var trigger = host.querySelector(".compound-pbb__start");
-    if (!trigger) return;
-    trigger.addEventListener("click", function () {
-      trigger.disabled = true;
-      setStatus(root, "Opening your bank...");
-      post(root, "compound_pbb_session", {})
-        .then(function (res) {
-          if (!res || !res.success) {
-            trigger.disabled = false;
-            setStatus(root, (res && res.data && res.data.message) || "Could not start bank linking.");
-            return;
-          }
-          // Sandbox simulation: there is no provider SDK to load, and the session URL is
-          // the merchant's own redirect with a customer id on it, which is the same shape
-          // the real flow returns the customer in.
-          if (res.data.simulated) {
-            window.location.assign(res.data.session_url);
-            return;
-          }
-          return loadSdk().then(function (Link) {
-            var link = Link.LinkInstance({
-              sessionUrl: res.data.session_url,
-              environment: root.dataset.environment,
-              sessionVersion: 2,
-            });
-            host.innerHTML = "";
-            host.appendChild(link.createButton());
-            setStatus(root, "Continue with your bank to finish linking.");
-            trigger.remove();
-          });
-        })
-        .catch(function () {
-          trigger.disabled = false;
-          setStatus(root, "Could not start bank linking. Please try again.");
-        });
-    });
   }
 
   // The provider returns its customer id in the redirect's query parameters. Consume it, tell
