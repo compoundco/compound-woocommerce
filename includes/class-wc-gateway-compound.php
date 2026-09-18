@@ -342,6 +342,12 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 			$method = (string) array_key_first( $enabled );
 		}
 		$order->update_meta_data( '_compound_method', $method );
+		// WooCommerce otherwise shows this gateway's single configured Title (e.g.
+		// "Card (Compound)") on every order regardless of which rail was actually chosen -
+		// this plugin offers several rails through one gateway, so that default is wrong
+		// whenever the shopper picks anything but the rail the merchant happened to name the
+		// gateway after. Set it explicitly to the rail actually used.
+		$order->set_payment_method_title( self::method_labels()[ $method ] ?? $method );
 
 		$payment_method = $this->payment_method( $method, $order );
 		if ( is_wp_error( $payment_method ) ) {
