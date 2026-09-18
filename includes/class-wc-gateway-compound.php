@@ -222,25 +222,25 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 	 */
 	private function build_form_fields(): array {
 		$fields = array(
-			'enabled'        => array(
+			'enabled'                     => array(
 				'title'   => __( 'Enable/Disable', 'compound-woocommerce' ),
 				'type'    => 'checkbox',
 				'label'   => __( 'Enable Compound', 'compound-woocommerce' ),
 				'default' => 'no',
 			),
-			'title'          => array(
+			'title'                       => array(
 				'title'       => __( 'Title', 'compound-woocommerce' ),
 				'type'        => 'text',
 				'description' => __( 'What the customer sees at checkout.', 'compound-woocommerce' ),
 				'default'     => __( 'Secure payment', 'compound-woocommerce' ),
 				'desc_tip'    => true,
 			),
-			'description'    => array(
+			'description'                 => array(
 				'title'   => __( 'Description', 'compound-woocommerce' ),
 				'type'    => 'textarea',
 				'default' => __( 'Your payment is processed by Compound.', 'compound-woocommerce' ),
 			),
-			'environment'    => array(
+			'environment'                 => array(
 				'title'   => __( 'Environment', 'compound-woocommerce' ),
 				'type'    => 'select',
 				'options' => array(
@@ -249,24 +249,31 @@ class WC_Gateway_Compound extends WC_Payment_Gateway {
 				),
 				'default' => 'sandbox',
 			),
-			'api_key'        => array(
+			'api_key'                     => array(
 				'title'       => __( 'Secret API key', 'compound-woocommerce' ),
 				'type'        => 'password',
 				'description' => __( 'A Compound secret key (sk_...) with orders:write and charges:write. Create it in the Compound admin portal (Developers).', 'compound-woocommerce' ),
 			),
-			'api_base'       => array(
+			'api_base'                    => array(
 				'title'       => __( 'API base URL', 'compound-woocommerce' ),
 				'type'        => 'text',
 				'description' => __( 'Compound\'s public API - one host, routing to both Orders and Payments by path.', 'compound-woocommerce' ),
 				'default'     => 'https://api.thepeptides.company',
 				'desc_tip'    => true,
 			),
-			'webhook_secret' => array(
+			'webhook_secret'              => array(
 				'title'       => __( 'Webhook signing secret', 'compound-woocommerce' ),
 				'type'        => 'password',
 				'description' => __( 'Verifies inbound Compound webhooks (order.shipped/delivered).', 'compound-woocommerce' ),
 			),
-			'custom_css'     => array(
+			'require_account_for_catalog' => array(
+				'title'       => __( 'Storefront access', 'compound-woocommerce' ),
+				'label'       => __( 'Require an account to browse the catalog', 'compound-woocommerce' ),
+				'type'        => 'checkbox',
+				'default'     => 'yes',
+				'description' => __( 'Guests are sent to sign in or register before viewing products or Certificates of Analysis. Turn off temporarily to let an external tool that cannot authenticate - such as Compound\'s catalog importer - read the catalog, or to make the store fully public. Only takes effect if your theme enforces it (the reference chefspeps theme does); this plugin stores the preference but does not gate anything itself.', 'compound-woocommerce' ),
+			),
+			'custom_css'                  => array(
 				'title'       => __( 'Custom CSS', 'compound-woocommerce' ),
 				'type'        => 'textarea',
 				'description' => __( 'Applied on every page this plugin renders anything on (checkout, the telemedicine intake form) - use it to match your site\'s look. Printed after the plugin\'s own base styles, so it can override them.', 'compound-woocommerce' ),
